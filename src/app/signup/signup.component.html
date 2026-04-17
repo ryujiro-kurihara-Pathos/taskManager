@@ -1,0 +1,41 @@
+<div class="signup">
+    <button class="home-button" routerLink="/home">ホームへ</button>
+    <div class="signup-title">
+        <h1>新規登録</h1>
+    </div>
+    <div class="input-container">
+        <input type="email" [(ngModel)]="email" class="email-input" placeholder="メールアドレス">
+        <input type="password" [(ngModel)]="password" class="password-input" placeholder="パスワード">
+        <input type="text" [(ngModel)]="username" class="username-input" placeholder="ユーザーネーム">
+    </div>
+    <div class="button-container">
+        <button class="signup-button" (click)="onSignUp()">登録</button>
+        <button class="login-button" routerLink="/login">ログインへ</button>
+    </div>
+</div>
+
+<style>
+    .signup {
+        min-height: 100vh;
+        padding: 100px 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: #f0f0f0;
+    }
+
+    .home-button {
+        border: none;
+        cursor: pointer;
+    }
+
+    .input-container {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .button-container {
+        display: flex;
+        flex-direction: column;
+    }
+</style>

@@ -1,0 +1,130 @@
+<!-- <div class="tasks-container">
+    <div class="display-switch-container">
+        <button
+          class="display-switch-btn"
+          type="button"
+          [class.active]="displayFormat === 'list'"
+          (click)="displayFormat = 'list'"
+        >
+          リスト
+        </button>
+        <button
+          class="display-switch-btn"
+          type="button"
+          [class.active]="displayFormat === 'board'"
+          (click)="displayFormat = 'board'"
+        >
+          ボード
+        </button>
+        <button
+          class="display-switch-btn"
+          type="button"
+          [class.active]="displayFormat === 'calendar'"
+          (click)="displayFormat = 'calendar'"
+        >
+          カレンダー
+        </button>
+      </div>
+      <button class="add-task-btn" type="button" (click)="openAddTaskModal()">+ タスクを追加</button>
+      @if (displayFormat === 'list') {
+        <div class="list">
+          <div class="task-table-wrapper">
+            <table class="task-table">
+              <thead class="task-table-head">
+                <tr>
+                  <th class="task-table-column-checkbox"></th>
+                  <th class="task-table-column-title">タスク名</th>
+                  <th class="task-table-column-due-date">期限</th>
+                  <th class="task-table-column-status">進捗</th>
+                  <th class="task-table-column-priority">優先度</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (task of getNotDoneTasks(); track task.id) {
+                  <tr
+                    (click)="openEditTaskModal(task.id)"
+                    [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        (click)="toggleTaskSelection(task.id); $event.stopPropagation()"
+                      />
+                    </td>
+                    <td>{{ task.title }}</td>
+                    <td>{{ task.dueDate }}</td>
+                    <td>{{ task.status }}</td>
+                    <td>{{ task.priority }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="done-task-container">
+            <h3>完了したタスク</h3>
+            @for (task of getDoneTasks(); track task.id) {
+              <div class="done-task-table-wrapper">
+                <table class="task-table">
+                  <tbody>
+                    <tr
+                      (click)="openEditTaskModal(task.id)"
+                      [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                    >
+                      <td class="task-table-column-checkbox">
+                        <input
+                          type="checkbox"
+                          (click)="toggleTaskSelection(task.id); $event.stopPropagation()"
+                        />
+                      </td>
+                      <td class="task-table-column-title">{{ task.title }}</td>
+                      <td class="task-table-column-due-date">{{ task.dueDate }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </div>
+      } @else if (displayFormat === 'board') {
+        <div class="board">
+          <div class="board-columns">
+            <div class="board-column">
+              <p class="board-column-title">未着手</p>
+              @for (task of getTasksByStatus('未着手'); track task.id) {
+                <p class="board-card-title">{{ task.title }}</p>
+              }
+            </div>
+            <div class="board-column">
+              <p class="board-column-title">進行中</p>
+              @for (task of getTasksByStatus('進行中'); track task.id) {
+                <p class="board-card-title">{{ task.title }}</p>
+              }
+            </div>
+            <div class="board-column">
+              <p class="board-column-title">保留</p>
+              @for (task of getTasksByStatus('保留'); track task.id) {
+                <p class="board-card-title">{{ task.title }}</p>
+              }
+            </div>
+            <div class="board-column">
+              <p class="board-column-title">完了</p>
+              @for (task of getTasksByStatus('完了'); track task.id) {
+                <p class="board-card-title">{{ task.title }}</p>
+              }
+            </div>
+          </div>
+        </div>
+      } @else if (displayFormat === 'calendar') {
+        <h2>カレンダー</h2>
+      }
+      @if (selectedTaskIds.length > 0) {
+        <button class="delete-selected-task-btn" type="button" (click)="deleteSelectedTask()">
+          一括削除
+        </button>
+      }
+      @if (searchedTasks.length > 0) {
+        @for (task of searchedTasks; track task.id) {
+          <p>{{ task.title }}</p>
+        }
+      }
+</div> -->

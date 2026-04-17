@@ -1,0 +1,91 @@
+<div class="profile-container">
+    <button class="btn home-btn" routerLink="/home">ホームへ</button>
+    <div class="profile-info">
+        <div class="profile-circle"></div>
+        <p class="username">ユーザーネーム: {{ userName }}</p>
+        <p class="email">メールアドレス: {{ userEmail }}</p>
+        <p class="uid">ユーザーID: {{ userUid }}</p>
+    </div>
+    <button class="btn edit-btn" (click)="startEdit()">プロフィールを編集する</button>
+    
+    @if (isEditing) {
+        <div class="edit-container">
+            <div class="edit-form">
+                <div class="edit-top">
+                    <h3 class="edit-title">プロフィールを編集する</h3>
+                    <button class="edit-cancel" (click)="cancelEdit()">×</button>
+                </div>
+                <div class="profile-circle"></div>
+                <input type="text" [(ngModel)]="editName" placeholder="ユーザーネーム">
+                <p class="email">メールアドレス: {{ userEmail }}</p>
+                <p class="uid">ユーザーID: {{ userUid }}</p>
+
+                <button class="save-btn" (click)="saveEdit()">保存</button>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .btn {
+        cursor: pointer;
+    }
+
+    .profile-container {
+        min-height: 100vh;
+        padding: 50px 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: white;
+        box-sizing: border-box;
+    }
+
+    .profile-info {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .profile-circle {
+        width: 80px;
+        height: 80px;
+        background-color: #999;
+        border-radius: 50%;
+    }
+
+    /* 編集モード */
+    .edit-container {
+        width: 100vw;
+        height: 100vh;
+        position: fixed;
+        top: 0;
+        left: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(255, 0, 0, 0.1);
+    }
+
+    .edit-form {
+        padding: 5%;
+        width: 80%;
+        height: 60%;
+        background-color: #fff;
+        border-radius: 20px;
+        box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
+    }
+
+    .edit-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .edit-cancel {
+        font-size: 24px;
+        background: none;
+        border: none;
+        cursor: pointer;
+    }
+</style>

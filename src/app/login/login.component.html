@@ -1,0 +1,40 @@
+<div class="login">
+    <button class="home-button" routerLink="/home">ホームへ</button>
+    <div class="login-title">
+        <h1>ログイン</h1>
+    </div>
+    <div class="input-container">
+        <input type="email" [(ngModel)]="email" class="email-input" placeholder="メールアドレス">
+        <input type="password" [(ngModel)]="password" class="password-input" placeholder="パスワード">
+    </div>
+    <div class="button-container">
+        <button class="login-button" (click)="onLogin()">ログイン</button>
+        <button class="signup-button" routerLink="/signup">新規登録へ</button>
+    </div>
+</div>
+
+<style>
+    .login {
+        min-height: 100vh;
+        padding: 100px 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: #f0f0f0;
+    }
+
+    .home-button {
+        border: none;
+        cursor: pointer;
+    }
+
+    .input-container {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .button-container {
+        display: flex;
+        flex-direction: column;
+    }
+</style>
