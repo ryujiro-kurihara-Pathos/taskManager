@@ -1,27 +1,27 @@
-import { Component, ViewChildren, QueryList, ElementRef } from '@angular/core';
+import { Component, ViewChildren, QueryList, ElementRef, inject, effect, OnInit } from '@angular/core';
 import { RouterLink, RouterLinkActive, Router, RouterOutlet } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { watchAuthState, logout } from '../auth';
 import { 
   addField, 
-  addTask, 
-  getMainTasks, 
-  getTask,
   getAllTasks,
-  updateTask, 
-  deleteTask, 
-  getSubTasks,
-  addComment,
-  isExistingCollection,
-  getComments,
-  deleteComment,
   searchTasks,
+  addComment,
+  deleteComment,
+  isExistingCollection,
+  updateTask,
+  addTask,
+  getSubTasks,
+  getTask,
+  deleteChildrenTask,
 } from '../firestore';
 import { TaskComponent } from './tasks/tasks.component';
-
-type Priority = '高' | '中' | '低';
-type Status = '未着手' | '進行中' | '保留' | '完了';
+import { AuthStateService } from '../services/auth-state.service';
+import { TasksService } from '../services/tasks.service';
+import { AuthService } from '../services/auth.service';
+import { Task, Comment, AddTaskInput, initialTask } from '../types/task';
+import { ModalService, ModalState } from '../services/modal.service';
+import { AddProjectInviteInput, initialProjectInviteInput } from '../types/project';
 
 @Component({
   selector: 'app-home',
@@ -29,48 +29,54 @@ type Status = '未着手' | '進行中' | '保留' | '完了';
   templateUrl: './home.component.html',
 })
 
-export class HomeComponent {
-  // サイドバー
-  isSidebarOpen: boolean = true;
-  // サイドバーにあるタブ
-  sidebarTabs: 'tasks' | 'projects' | 'teams' = 'tasks';
+export class HomeComponent implements OnInit {
+  authState = inject(AuthStateService);
+  authService = inject(AuthService);
+  tasksService = inject(TasksService);
 
-  // 表示形式
-  displayFormat: 'list' | 'board' | 'calendar' = 'list';
+  modalState: ModalState = {
+    isOpen: false,
+    type: null,
+    data: null,
+  };
 
-  // ユーザー情報
-  userName: string = '';
-  userEmail: string = '';
-  userUid: string = '';
-  // ログインしているかどうか
-  isLoggedIn: boolean = false;
+  constructor(
+    private modalService: ModalService
+  ) {
+    effect(() => {
+      const user = this.authState.user();
+      if(user) {
+        this.tasksService.loadMainTasks();
+      } else {
+        this.tasksService.clearTasks();
+      }
+    });
+  }
+
+  ngOnInit() {
+    this.modalService.modalState$.subscribe((state) => {
+      this.modalState = state;
+    });
+  }
+
+  closeModal() {
+    this.modalService.close();
+  }
 
   // タスク
-  isAddingTask: boolean = false;
-  taskTitle: string = '';
-  taskDueDate: string = '';
-  taskStartDate: string = '';
-  taskStatus: string = '';
-  taskPriority: string = '';
-  taskMemo: string = '';
-  mainTasks: any[] = [];
-
-  // タスク編集
-  editingTask: any = null;
-  selectedTaskIds: string[] = [];
-  subTasks: any[] = [];
-  subTaskHierarchy: any[] = [];
-
-  // コメント
+  isSidebarOpen: boolean = true;
+  sidebarTabs: 'tasks' | 'projects' | 'teams' = 'tasks';
+  addingTask: AddTaskInput = initialTask;
+  addingSubTask: Task | null = null;
   commentContent: string = '';
-  comments: any[] = [];
 
-  // 検索
+  // プロジェクト
+  projectInviteInput: AddProjectInviteInput = initialProjectInviteInput;
+
   searchQuery: string = '';
-  searchedTasks: any[] = [];
+  searchedTasks: Task[] = [];
 
-  constructor(private router: Router) {}
-  @ViewChildren('subTaskInput') subTaskInputs!: QueryList<ElementRef>;
+  @ViewChildren('subTaskInput') subTaskInputs!: QueryList<ElementRef<HTMLInputElement>>;
 
   // フィールドを追加
   async addField(fieldName: string, fieldValue: any) {
@@ -90,312 +96,172 @@ export class HomeComponent {
   }
 
   // ユーザー情報
-  // ログイン状態を監視
-  ngOnInit() {
-    watchAuthState((user) => {
-      if(user) {
-        this.isLoggedIn = true;
-        this.userName = user.displayName || '';
-        this.userEmail = user.email || '';
-        this.userUid = user.uid || '';
-        this.loadMainTasks();
-      } else {
-        this.isLoggedIn = false;
-        this.userName = '';
-        this.userEmail = '';
-        this.userUid = '';
-        this.mainTasks = [];
-      }
-    });
-  }
   // ログアウト
   async onLogout() {
     try {
-      await logout();
-      this.router.navigate(['/login']);
+      // await logout();
+      // this.router.navigate(['/login']);
     } catch (error) {
       console.error(error);
     }
   }
-
   // タスク
-  // タスクモーダルを開く
-  openAddTaskModal() {
-    this.isAddingTask = true;
-  }
-  // タスクモーダルを閉じる
-  closeAddTaskModal() {
-    this.isAddingTask = false;
-  }
   // タスク追加
   async addTask() {
-    if(!this.taskTitle) return;
-
     try {
-      await addTask(
-        this.userUid, {
-          title: this.taskTitle,
-          parentTaskId: this.editingTask ? this.editingTask.id : null,
-          dueDate: this.taskDueDate,
-          startDate: this.taskStartDate,
-          status: this.taskStatus,
-          priority: this.taskPriority,
-          memo: this.taskMemo,
-      });
-      await this.loadMainTasks();
-      this.isAddingTask = false;
-      this.resetInputTask();
-    } catch (error) {}
-  }
-  // 完了したタスクを取得
-  getDoneTasks() {
-    return this.mainTasks.filter(task => task.status === '完了');
-  }
-  // 未完了のタスクを取得
-  getNotDoneTasks() {
-    return this.mainTasks.filter(task => task.status !== '完了');
-  }
-  // 入力タスクをリセットする
-  resetInputTask() {
-    this.taskTitle = '';
-    this.taskDueDate = '';
-    this.taskStatus = '';
-    this.taskPriority = '';
-    this.taskMemo = '';
-  }
-  // タスクの読み込み
-  async loadMainTasks() {
-    try {
-      this.mainTasks = await getMainTasks();
-    } catch (error) {}
-  }
-  // タスク編集モーダルを開く
-  async openEditTaskModal(taskId: string) {
-    this.editingTask = await this.getEditingTask(taskId);
-    this.subTasks = await this.getSubTasks();
-    this.subTaskHierarchy = await this.getSubTaskHierarchy(taskId);
-    this.comments = await this.getComments();
-  }
-  // タスク編集モーダルを閉じる
-  async closeEditTaskModal() {
-    this.editingTask = null;
-    this.subTasks = [];
-    await this.loadMainTasks();
-  }
-  // 編集するタスクを取得
-  async getEditingTask(taskId: string) {
-    try {
-      const task = await getTask(taskId);
-      return task;
+      const newTask = await addTask(this.authState.uid, this.addingTask);
+      this.tasksService.addTask(newTask as Task);
+      this.closeModal();
+      this.addingTask = initialTask;
     } catch (error) {
-      console.error("タスク取得失敗: ", error);
-      return null;
+      console.error("タスク追加失敗: ", error);
     }
   }
-  // タスクを更新
-  async updateTask(task: any) {
-    try {
-      await updateTask(task.id, {
-        title: task.title,
-        parentTaskId: null,
-        dueDate: task.dueDate,
-        startDate: task.startDate,
-        status: task.status,
-        priority: task.priority,
-        memo: task.memo,
-      });
-      await this.closeEditTaskModal();
-    } catch (error) {
-      console.error("タスク更新失敗: ", error);
-    }
-  }
-  // タスクのフィールドを更新
-  async updateTaskField(taskId: string, fieldName: string, value: string) {
-    try {
-      await updateTask(taskId, {
-        [fieldName]: value,
-      });
-    } catch (error) {
-      console.error("タスクフィールド更新失敗: ", error);
-    }
-  }
-  // タスクを削除
+  // タスクの削除
   async deleteTask(taskId: string) {
     try {
-      await deleteTask(taskId);
-      await this.loadMainTasks();
-      this.closeEditTaskModal();
+      await deleteChildrenTask(taskId);
+      this.closeModal();
+      this.tasksService.deleteTask(taskId);
     } catch (error) {
       console.error("タスク削除失敗: ", error);
     }
   }
-  // タスク選択
-  toggleTaskSelection(taskId: string) {
-    if(this.selectedTaskIds.includes(taskId)) {
-      this.selectedTaskIds = this.selectedTaskIds.filter(id => id !== taskId);
-    } else {
-      this.selectedTaskIds.push(taskId);
-    }
-  }
-  // タスク一括削除
-  async deleteSelectedTask() {
-    try {
-      for(const taskId of this.selectedTaskIds) {
-        await deleteTask(taskId);
-      }
 
-      await this.loadMainTasks();
-      this.selectedTaskIds = [];
-    } catch (error) {
-      console.error("タスク一括削除失敗: ", error);
-    }
-  }
-  // サブタスクをタスクに追加
-  async addSubTaskToTask(subTask: any) {
+  // タスクの更新
+  async updateTask(task: Task) {
     try {
-      await addTask(
-        this.userUid, {
-          title: subTask.title,
-          parentTaskId: this.editingTask.id,
-          dueDate: null,
-          startDate: null,
-          status: null,
-          priority: null,
-          memo: null,
-        }
-      );
+      await updateTask({
+        title: task.title,
+        parentTaskId: task.parentTaskId ?? null,
+        projectId: task.projectId ?? null,
+        dueDate: task.dueDate ?? null,
+        startDate: task.startDate ?? null,
+        status: task.status ?? null,
+        priority: task.priority ?? null,
+        memo: task.memo ?? null,
+      }, task.id);
     } catch (error) {
-      console.error("サブタスクをタスクに追加失敗: ", error);
+      console.error("タスク更新失敗: ", error);
     }
   }
+
+  // サブタスク
   // サブタスクの取得
-  async getSubTasks() {
+  async getSubTasks(taskId: string) {
     try {
-      const subTasks = await getSubTasks(this.editingTask.id);
-      subTasks.forEach(subTask => {
-        subTask.originalTitle = subTask.title;
-      })
+      const subTasks = await getSubTasks(taskId);
       return subTasks;
     } catch (error) {
+      console.error("サブタスク取得失敗: ", error);
       return [];
     }
   }
-  // 入力するための空のサブタスクを追加
-  addEmptySubTask() {
-    this.subTasks.push({ id: crypto.randomUUID(), title: ''});
+  // 空のサブタスクを追加
+  addEmptySubTask(taskId: string) {
+    this.addingSubTask = { id: crypto.randomUUID(), title: '', parentTaskId: taskId } as Task;
 
     setTimeout(() => {
       const inputs = this.subTaskInputs.toArray();
       const lastInput = inputs[inputs.length - 1];
       lastInput?.nativeElement.focus();
-    })
+    }, 0);
   }
-  // サブタスクを削除
-  removeSubTask(subTask: any) {
-    if(subTask.title !== '') return;
-    this.subTasks = this.subTasks.filter(
-      item => item.id !== subTask.id
-    );
-  }
-  // サブタスクの更新
-  async updateSubTask(subTask: any) {
-    try {
-      // 既存のタスクかどうか
-      const isExisting = await isExistingCollection('tasks', subTask.id);
-      if(isExisting) { // 既存の場合
-        if(subTask.title === '') {
-          subTask.title = subTask.originalTitle;
-        } else {
-          await updateTask(
-            subTask.id, {
-              title: subTask.title,
-            }
-          );
-          subTask.originalTitle = subTask.title;
-        }
-      } else { // 新規の場合
-        if(subTask.title === '') {
-          this.removeSubTask(subTask);
-        } else {
-          await this.addSubTaskToTask(subTask);
-          this.subTasks = await this.getSubTasks();
-        }
-      }
-    } catch (error) {
-      console.error('サブタスク更新失敗: ', error);
+  // サブタスクを追加
+  async addSubTask(subTask: Task) {
+    if(subTask.title.trim() === '') {
+      this.addingSubTask = null;
+    } else {
+      const newSubTask = await this.addTaskToFirestore(subTask, 'subTask');
+      this.modalState.data?.subTasks?.unshift(newSubTask);
+      this.addingSubTask = null;
     }
   }
-  // 編集中のタスクを変更する
-  async changeEditingTask(task: any) {
+
+  // タスクをFirestoreに追加
+  async addTaskToFirestore(task: Task, type: 'subTask' | 'mainTask') {
+    try {
+        const addTaskInput: AddTaskInput = {
+            title: task.title,
+            parentTaskId: type === 'subTask' ? task.parentTaskId ?? null : null,
+            projectId: task.projectId ?? null,
+            dueDate: task.dueDate ?? null,
+            startDate: task.startDate ?? null,
+            status: task.status ?? null,
+            priority: task.priority ?? null,
+            memo: task.memo ?? null,
+        }
+        const newTask = await addTask(task.id, addTaskInput);
+        return newTask;
+    } catch (error) {
+        return null;
+    }
+  }
+    // サブタスクの更新
+  async updateTitle(task: Task) {
+    try {
+      if(task.title.trim() === '') {
+        task.title = task.originalTitle;
+      } else {
+        await updateTask({
+          title: task.title,
+          parentTaskId: task.parentTaskId ?? null,
+          projectId: task.projectId ?? null,
+          dueDate: task.dueDate ?? null,
+          startDate: task.startDate ?? null,
+          status: task.status ?? null,
+          priority: task.priority ?? null,
+          memo: task.memo ?? null,
+        }, task.id);
+        task.originalTitle = task.title;
+      }
+    } catch (error) {
+      console.error("タスクタイトル更新失敗: ", error);
+    }
+  }
+
+  // サブタスクを削除
+  removeSubTask(subTask: any) {
+      // if(subTask.title !== '') return;
+      // this.subTasks = this.subTasks.filter(
+      //     item => item.id !== subTask.id
+      // );
+  }
+
+  // editingTaskを変更する
+  async changeEditingTask(task: Task) {
     const isExisting = await isExistingCollection('tasks', task.id);
     if(!isExisting) return;
     try {
-      this.editingTask = await getTask(task.id);
-      this.subTasks = await this.getSubTasks();
-      this.subTaskHierarchy = await this.getSubTaskHierarchy(task.id);
+      this.modalState.data = await getTask(task.id);
+      this.modalState.data.subTasks = await this.getSubTasks(task.id);
+      this.modalState.data.hierarchyTask = await this.modalService.getSubTaskHierarchy(task.id);
     } catch (error) {
       console.error("編集中のタスク変更失敗: ", error);
     }
   }
-  // サブタスクの階層を取得
-  async getSubTaskHierarchy(taskId: string) {
-    const hierarchy = [];
 
-    let currentId: string | null = taskId;
-
-    while(currentId) {
-      const task: any = await getTask(currentId);
-      hierarchy.unshift(task);
-
-      currentId = task.parentTaskId;
-    }
-    hierarchy.pop();
-
-    return hierarchy;
-  }
-  // 状態別のタスク取得
-  getTasksByStatus(status: string) {
-    return this.mainTasks.filter(task => task.status === status);
-  }
-
-  // コメント
-  // コメントの追加
-  async addComment() {
-    // タスクが既存ものなら更新、新規なら追加をする
-    try {
-      const comment = await addComment({
-        uid: this.userUid,
-        taskId: this.editingTask.id,
-        content: this.commentContent,
-      });
-      this.comments.push(comment);
-      this.commentContent = '';
-    } catch (error) {
-      console.error("コメント追加失敗: ", error);
-    }
-  }
-  // コメントを取得
-  async getComments() {
-    try {
-      const comments = await getComments(this.editingTask.id);
-      return comments;
-    } catch (error) {
-      return [];
-    }
+  // サブタスクをタスクに追加
+  async addSubTaskToTask(subTask: any) {
+      // try {
+      //     const addTaskInput: AddTaskInput = {
+      //         title: subTask.title,
+      //         parentTaskId: this.editingTask?.id ?? null,
+      //         projectId: this.editingTask?.projectId ?? null,
+      //         dueDate: null,
+      //         startDate: null,
+      //         status: '未着手',
+      //         priority: '中',
+      //         memo: null,
+      //     }
+      // await addTask(this.authState.uid, addTaskInput);
+      // } catch (error) {
+      // console.error("サブタスクをタスクに追加失敗: ", error);
+      // }
   }
 
-  // コメントを削除
-  async deleteComment(commentId: string) {
-    try {
-      await deleteComment(commentId);
-      this.comments = this.comments.filter(comment => comment.id !== commentId);
-    } catch (error) {
-      console.error("コメント削除失敗: ", error);
-    }
-  }
-
-  // 検索
-  // タスクの検索
+  // // 検索
+  // // タスクの検索
   async searchTasks() {
     try {
       this.searchedTasks = await searchTasks(this.searchQuery);
@@ -409,28 +275,29 @@ export class HomeComponent {
     this.searchedTasks = [];
   }
 
-  // 期限
-  // 期限の状態を取得
-  getDueDateStatus(dueDate: string | null, taskStatus: string) {
-    if(taskStatus === '完了') return '';
-    if(!dueDate) return '';
-
-    const today = new Date();
-    const due = new Date(dueDate);
-
-    today.setHours(0, 0, 0, 0);
-    due.setHours(0, 0, 0, 0);
-
-    const diff = (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-
-    if(diff < 0) {
-      return 'overdue';
+  // コメント
+  // コメントの追加
+  async addComment(taskId: string) {
+    // タスクが既存ものなら更新、新規なら追加をする
+    try {
+      const comment = await addComment({
+          uid: this.authState.uid,
+          taskId: taskId,
+          content: this.commentContent,
+      });
+      this.modalState.data.comments.push(comment);
+      this.commentContent = '';
+    } catch (error) {
+    console.error("コメント追加失敗: ", error);
     }
+  }
 
-    if(diff <= 2) {
-      return 'near';
+  async deleteComment(commentId: string) {
+    try {
+      await deleteComment(commentId);
+      this.modalState.data.comments = this.modalState.data.comments.filter((comment: Comment) => comment.id !== commentId);
+    } catch (error) {
+      console.error("コメント削除失敗: ", error);
     }
-
-    return '';
   }
 }

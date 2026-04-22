@@ -1,0 +1,131 @@
+<div class="projects-container">
+    <div class="project-header">
+        <p class="project-header-title">プロジェクト</p>
+        <button class="project-add-btn" (click)="openProjectAddModal()">プロジェクトを作成</button>
+    </div>
+    <div class="project-main">
+        <div class="project-search-wrapper">
+            <input type="text" 
+            class="project-search-input"
+            placeholder="プロジェクトを見つける">
+        </div>
+        <div class="project-list-wrapper">
+            <div class="project-list-header">
+                <span>名前</span>
+                <span>メンバー</span>
+                <span class="right-align">操作</span>
+            </div>
+            <div class="project-item-wrapper">
+                @for (project of projects; track project.id) {
+                    <a class="project-item" [routerLink]="['/home/projects', project.id]">
+                        <div class="project-left">
+                            <div class="project-name">{{ project.name }}</div>
+                        </div>
+        
+                        <div class="project-members">
+                            @for (memberId of project.memberIds; track memberId) {
+                                <div class="avatar">栗</div>
+                            }
+                        </div>
+                    
+                        <div class="project-last-updated">1時間前</div>
+                    </a>
+                }
+            </div>
+        </div>
+        @if (isProjectAddModalOpen) {
+            <div class="project-add-modal">
+                <input type="text" 
+                placeholder="プロジェクト名"
+                [(ngModel)]="newProjectName">
+                <button (click)="closeProjectAddModal()">×</button>
+                <button (click)="addProject()">作成</button>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .project-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 20px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    .project-header-title {
+        font-size: 20px;
+        font-weight: bold;
+    }
+    .project-add-btn {
+        padding: 10px 15px;
+        background-color: #4ea356;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .project-add-btn:hover {
+        background-color: #255c2b;
+    }
+    .project-search-wrapper {
+        width: 90%;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 10px 0;
+    }
+    .project-search-input {
+        width: 100%;
+        padding: 10px 16px 10px 40px;
+        border-radius: 9999px;
+        border: 1px solid #b4b4b4;
+        background-color: #f9fafb;
+        box-sizing: border-box;
+        font-size: 14px;
+        outline: none;
+        transition: all 0.2s ease;
+    }
+    .project-list-header,
+    .project-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 160px 120px;
+        align-items: center;
+        cursor: pointer;
+    }
+    .project-list-header {
+        border-bottom: 1px solid #e0e0e0;
+    }
+    .project-item {
+        border-bottom: 1px solid #e0e0e0;
+        padding-top: 8px;
+        text-decoration: none;
+        color: #000;
+    }
+    .project-item:hover {
+        background-color: #f9fafb;
+    }
+    .project-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .project-members {
+        display: flex;
+        gap: 4px;
+    }
+    .avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background-color: #4ea356;
+        color: #fff;
+        font-size: 12px;
+        text-align: center;
+        line-height: 24px;
+    }
+
+    .project-add-modal {
+        background-color: gray;
+        padding: 20px;
+    }
+    </style>

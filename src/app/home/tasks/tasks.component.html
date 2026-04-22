@@ -1,130 +1,401 @@
-<!-- <div class="tasks-container">
-    <div class="display-switch-container">
-        <button
-          class="display-switch-btn"
-          type="button"
-          [class.active]="displayFormat === 'list'"
-          (click)="displayFormat = 'list'"
-        >
-          リスト
-        </button>
-        <button
-          class="display-switch-btn"
-          type="button"
-          [class.active]="displayFormat === 'board'"
-          (click)="displayFormat = 'board'"
-        >
-          ボード
-        </button>
-        <button
-          class="display-switch-btn"
-          type="button"
-          [class.active]="displayFormat === 'calendar'"
-          (click)="displayFormat = 'calendar'"
-        >
-          カレンダー
-        </button>
-      </div>
-      <button class="add-task-btn" type="button" (click)="openAddTaskModal()">+ タスクを追加</button>
-      @if (displayFormat === 'list') {
-        <div class="list">
-          <div class="task-table-wrapper">
-            <table class="task-table">
-              <thead class="task-table-head">
-                <tr>
-                  <th class="task-table-column-checkbox"></th>
-                  <th class="task-table-column-title">タスク名</th>
-                  <th class="task-table-column-due-date">期限</th>
-                  <th class="task-table-column-status">進捗</th>
-                  <th class="task-table-column-priority">優先度</th>
+<div class="tasks-container">
+  <div class="display-switch-container">
+    <button
+      class="display-switch-btn"
+      type="button"
+      [class.active]="tasksService.displayFormat === 'list'"
+      (click)="tasksService.displayFormat = 'list'"
+    >
+      リスト
+    </button>
+    <button
+      class="display-switch-btn"
+      type="button"
+      [class.active]="tasksService.displayFormat === 'board'"
+      (click)="tasksService.displayFormat = 'board'"
+    >
+      ボード
+    </button>
+    <button
+      class="display-switch-btn"
+      type="button"
+      [class.active]="tasksService.displayFormat === 'calendar'"
+      (click)="tasksService.displayFormat = 'calendar'"
+    >
+      カレンダー
+    </button>
+  </div>
+    <!-- <button class="add-task-btn" type="button" (click)="tasksService.openAddTaskModal()">+ タスクを追加</button> -->
+    <button class="add-task-btn" type="button" (click)="openTaskModal('task-add', null)">+ タスクを追加</button>
+    @if (tasksService.displayFormat === 'list') {
+      <!-- リスト -->
+      <div class="list">
+        <div class="task-table-wrapper">
+          <table class="task-table">
+            <thead class="task-table-head">
+              <tr>
+                <th class="task-table-column-checkbox"></th>
+                <th class="task-table-column-title">タスク名</th>
+                <th class="task-table-column-due-date">期日</th>
+                <th class="task-table-column-status">進捗</th>
+                <th class="task-table-column-priority">優先度</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (task of getNotDoneTasks(); track task.id) {
+                <tr
+                  (click)="openTaskModal('task-edit', task)"
+                  [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                >
+                  <td>
+                    <input
+                      type="checkbox"
+                      (click)="toggleTaskSelection(task.id); $event.stopPropagation()"
+                    />
+                  </td>
+                  <td>{{ task.title }}</td>
+                  <td>{{ task.startDate }} ~ {{ task.dueDate }}</td>
+                  <td>{{ task.status }}</td>
+                  <td>{{ task.priority }}</td>
                 </tr>
-              </thead>
-              <tbody>
-                @for (task of getNotDoneTasks(); track task.id) {
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="done-task-container">
+          <h3>完了したタスク</h3>
+          @for (task of tasksService.getDoneTasks(); track task.id) {
+            <div class="done-task-table-wrapper">
+              <table class="task-table">
+                <tbody>
                   <tr
-                    (click)="openEditTaskModal(task.id)"
+                    (click)="tasksService.openEditTaskModal(task.id)"
                     [ngClass]="getDueDateStatus(task.dueDate, task.status)"
                   >
-                    <td>
+                    <td class="task-table-column-checkbox">
                       <input
                         type="checkbox"
                         (click)="toggleTaskSelection(task.id); $event.stopPropagation()"
                       />
                     </td>
-                    <td>{{ task.title }}</td>
-                    <td>{{ task.dueDate }}</td>
-                    <td>{{ task.status }}</td>
-                    <td>{{ task.priority }}</td>
+                    <td class="task-table-column-title">{{ task.title }}</td>
+                    <td class="task-table-column-due-date">{{ task.dueDate }}</td>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      </div>
+    } @else if (tasksService.displayFormat === 'board') {
+      <!-- ボード -->
+      <div class="board">
+        <div class="board-columns">
+          <div class="board-column">
+            <p class="board-column-title">未着手</p>
+            @for (task of tasksService.getTasksByStatus('未着手'); track task.id) {
+              <div class="board-card" (click)="tasksService.openEditTaskModal(task.id)">
+                <p class="board-card-title">{{ task.title }}</p>
+              </div>
+            }
           </div>
-          <div class="done-task-container">
-            <h3>完了したタスク</h3>
-            @for (task of getDoneTasks(); track task.id) {
-              <div class="done-task-table-wrapper">
-                <table class="task-table">
-                  <tbody>
-                    <tr
-                      (click)="openEditTaskModal(task.id)"
-                      [ngClass]="getDueDateStatus(task.dueDate, task.status)"
-                    >
-                      <td class="task-table-column-checkbox">
-                        <input
-                          type="checkbox"
-                          (click)="toggleTaskSelection(task.id); $event.stopPropagation()"
-                        />
-                      </td>
-                      <td class="task-table-column-title">{{ task.title }}</td>
-                      <td class="task-table-column-due-date">{{ task.dueDate }}</td>
-                    </tr>
-                  </tbody>
-                </table>
+          <div class="board-column">
+            <p class="board-column-title">進行中</p>
+            @for (task of tasksService.getTasksByStatus('進行中'); track task.id) {
+              <div class="board-card" (click)="tasksService.openEditTaskModal(task.id)">
+                <p class="board-card-title">{{ task.title }}</p>
+              </div>
+            }
+          </div>
+          <div class="board-column">
+            <p class="board-column-title">保留</p>
+            @for (task of tasksService.getTasksByStatus('保留'); track task.id) {
+              <div class="board-card" (click)="tasksService.openEditTaskModal(task.id)">
+                <p class="board-card-title">{{ task.title }}</p>
+              </div>
+            }
+          </div>
+          <div class="board-column">
+            <p class="board-column-title">完了</p>
+            @for (task of tasksService.getTasksByStatus('完了'); track task.id) {
+              <div class="board-card" (click)="tasksService.openEditTaskModal(task.id)">
+                <p class="board-card-title">{{ task.title }}</p>
               </div>
             }
           </div>
         </div>
-      } @else if (displayFormat === 'board') {
-        <div class="board">
-          <div class="board-columns">
-            <div class="board-column">
-              <p class="board-column-title">未着手</p>
-              @for (task of getTasksByStatus('未着手'); track task.id) {
-                <p class="board-card-title">{{ task.title }}</p>
-              }
+      </div>
+    } @else if (tasksService.displayFormat === 'calendar') {
+      <!-- カレンダー -->
+      <div class="calendar-nav">
+        <button class="calendar-btn" (click)="prevWeek()">前の週</button>
+        <button class="calendar-btn" (click)="today()">今日</button>
+        <button class="calendar-btn" (click)="nextWeek()">次の週</button>
+      </div>
+      <div class="calendar-board">
+        <div class="week-grid">
+          @for (date of weekDates; track date.getTime()) {
+            <div class="day-column">
+              <div class="day-header">
+                <div class="day-name">{{ getDayName(date) }}</div>
+                <div
+                  class="day-number"
+                  [ngClass]="{ 'today-number': isToday(date) }"
+                >
+                  {{ date.getDate() }}
+                </div>
+              </div>
+      
+              <div class="day-body">
+              </div>
             </div>
-            <div class="board-column">
-              <p class="board-column-title">進行中</p>
-              @for (task of getTasksByStatus('進行中'); track task.id) {
-                <p class="board-card-title">{{ task.title }}</p>
-              }
-            </div>
-            <div class="board-column">
-              <p class="board-column-title">保留</p>
-              @for (task of getTasksByStatus('保留'); track task.id) {
-                <p class="board-card-title">{{ task.title }}</p>
-              }
-            </div>
-            <div class="board-column">
-              <p class="board-column-title">完了</p>
-              @for (task of getTasksByStatus('完了'); track task.id) {
-                <p class="board-card-title">{{ task.title }}</p>
-              }
-            </div>
-          </div>
+          }
         </div>
-      } @else if (displayFormat === 'calendar') {
-        <h2>カレンダー</h2>
-      }
-      @if (selectedTaskIds.length > 0) {
-        <button class="delete-selected-task-btn" type="button" (click)="deleteSelectedTask()">
-          一括削除
-        </button>
-      }
-      @if (searchedTasks.length > 0) {
-        @for (task of searchedTasks; track task.id) {
-          <p>{{ task.title }}</p>
-        }
-      }
-</div> -->
+      
+        <div class="task-layer">
+          @for (task of getWeekTasks(); track task.id) {
+            <div
+              class="sample-task-bar"
+              [style.top.px]="getTaskTop(task)"
+              [style.left.%]="getTaskLeftPercent(task)"
+              [style.width.%]="getTaskWidthPercent(task)"
+            >
+              {{ task.title }}
+            </div>
+          }
+        </div>
+      </div>
+    }
+    @if (selectedTaskIds.length > 0) {
+      <button class="delete-selected-task-btn" type="button" (click)="deleteSelectedTask()">
+        一括削除
+      </button>
+    }
+</div>
+
+<style>
+  .display-switch-container {
+    display: flex;
+    flex-shrink: 0;
+    border-bottom: 1px solid #d0d6cf;
+    gap: 20px;
+    margin-top: 10px;
+    padding: 0 20px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .list {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: auto;
+    box-sizing: border-box;
+  }
+  .display-switch-btn {
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    padding: 5px 10px;
+    font-size: 14px;
+  }
+  .display-switch-btn:hover {
+    background-color: #ebf1ee;
+  }
+  .display-switch-btn.active {
+    border-bottom: 2px solid #333;
+  }
+  .task-table-wrapper,
+  .done-task-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    background: white;
+    border-top: 1px solid #ddd;
+  }
+  .task-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 14px;
+    color: #222;
+  }
+  .task-table td,
+  .task-table th {
+    font-size: 14px;
+  }
+  .task-table thead th {
+    text-align: left;
+    font-weight: 500;
+    color: #666;
+    padding: 12px 10px;
+    border-bottom: 1px solid #ddd;
+    border-right: 1px solid #eee;
+  }
+  .task-table thead th:last-child {
+    border-right: none;
+  }
+  .task-table-column-checkbox {
+    width: 20px;
+  }
+  .task-table-column-title {
+    min-width: 40%;
+  }
+  .task-table-column-due-date {
+    width: 110px;
+  }
+  .task-table-column-status {
+    width: 80px;
+  }
+  .task-table-column-priority {
+    width: 50px;
+  }
+  .task-table tbody tr {
+    cursor: pointer;
+  }
+  .task-table tbody tr:hover {
+    background-color: #f0f0f0;
+  }
+  .task-table tbody td {
+    padding: 10px 10px;
+    border-bottom: 1px solid #eee;
+    border-right: 1px solid #ddd;
+    vertical-align: middle;
+  }
+  .task-table tbody td:last-child {
+    border-right: none;
+  }
+  .done-task-container {
+    display: flex;
+    flex-direction: column;
+  }
+  .overdue {
+    background-color: rgb(231, 158, 158);
+  }
+  .near {
+    background-color: rgb(247, 247, 163);
+  }
+
+  /* ボード */
+  .board {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .board-columns {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    width: max-content;
+    padding: 0 12px 12px;
+    box-sizing: border-box;
+  }
+  .board-column {
+    /* flex: 0 0 auto; */
+    width: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .board-column-title,
+  .board-card {
+    background-color: #f5f5f5;
+    padding: 12px;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+  .board-column-title {
+    font-size: 20px;
+    font-weight: bold;
+  }
+  .board-card {
+    cursor: pointer;
+  }
+  .board-card:hover {
+    background-color: #e0e0e0;
+  }
+  .board-card-title {
+    font-size: 14px;
+    margin: 6px 0;
+  }
+
+  /* カレンダー */
+  .calendar-nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .calendar-btn {
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+    background: none;
+  }
+  .calendar-btn:hover {
+    background-color: #f0f0f0;
+  }
+  .calendar-board {
+    position: relative;
+  }
+  .week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    width: 100%;
+    border-top: 1px solid #d9d9d9;
+    border-left: 1px solid #d9d9d9;
+  }
+  .day-column {
+    min-width: 0;
+    min-height: 260px;
+    border-right: 1px solid #d9d9d9;
+    border-bottom: 1px solid #d9d9d9;
+  }
+  .day-header {
+    padding: 8px;
+    border-bottom: 1px solid #ececec;
+    font-weight: 600;
+  }
+  .day-number {
+    display: inline-flex;
+    padding: 4px;
+    border-radius: 4px;
+  }
+  .today-number {
+    color: white;
+    background-color: #4e7742;
+  }
+  .day-body {
+    min-height: 260px;
+    padding: 8px 0;
+    position: relative;
+  }
+  .task-layer {
+    position: absolute;
+    top: 80px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    cursor: pointer;
+    min-height: 200px;
+  }
+  .sample-task-bar {
+    position: absolute;
+    height: 40px;
+    background-color: #f4bf47;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    box-sizing: border-box;
+    border-radius: 8px;
+
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  
+</style>

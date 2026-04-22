@@ -1,0 +1,276 @@
+<div class="project-detail-container">
+    @if (project) {
+        <div class="project-detail-header">
+            <p>{{ project.name }}</p>
+            <button class="invite-btn" (click)="onProjectInviteClick(project)">招待</button>
+        </div>
+        <div class="display-switch-container">
+            <button
+              class="display-switch-btn"
+              type="button"
+              [class.active]="displayFormat === 'list'"
+              (click)="displayFormat = 'list'"
+            >
+              リスト
+            </button>
+            <button
+              class="display-switch-btn"
+              type="button"
+              [class.active]="displayFormat === 'board'"
+              (click)="displayFormat = 'board'"
+            >
+              ボード
+            </button>
+            <button
+              class="display-switch-btn"
+              type="button"
+              [class.active]="displayFormat === 'calendar'"
+              (click)="displayFormat = 'calendar'"
+            >
+              カレンダー
+            </button>
+        </div>
+        
+        @if (displayFormat === 'list') {
+            <button class="task-add-btn" (click)="openTaskAddModal()">タスクを追加</button>
+            <div class="list">
+                <div class="task-table-wrapper">
+                  <table class="task-table">
+                    <thead class="task-table-head">
+                      <tr>
+                        <th class="task-table-column-checkbox"></th>
+                        <th class="task-table-column-title">タスク名</th>
+                        <th class="task-table-column-due-date">期限</th>
+                        <th class="task-table-column-status">進捗</th>
+                        <th class="task-table-column-priority">優先度</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                        @for (task of tasks; track task.id) {
+                            <tr>
+                                <td>
+                                    <input type="checkbox"/>
+                                </td>
+                                <td>{{ task.title }}</td>
+                                <td>{{ task.dueDate }}</td>
+                                <td>{{ task.status }}</td>
+                                <td>{{ task.priority }}</td>
+                            </tr>
+                        }
+                    </tbody>
+                  </table>
+                </div>
+            </div>
+            @if (isTaskAddModalOpen) {
+                <div class="task-add-modal">
+                    <input type="text" placeholder="タスク名"
+                    [(ngModel)]="newTaskTitle">
+                    <button (click)="closeTaskAddModal()">×</button>
+                    <button (click)="addTask(newTaskTitle)">追加</button>
+                </div>
+            }
+        } @else if (displayFormat === 'board') {
+            <div class="board">
+                <div class="board-columns">
+                  <div class="board-column">
+                    <p class="board-column-title">未着手</p>
+                    @for (task of getTasksByStatus('未着手'); track task.id) {
+                      <div class="board-card">
+                        <p class="board-card-title">{{ task.title }}</p>
+                      </div>
+                    }
+                  </div>
+                  <div class="board-column">
+                    <p class="board-column-title">進行中</p>
+                    @for (task of getTasksByStatus('進行中'); track task.id) {
+                      <div class="board-card">
+                        <p class="board-card-title">{{ task.title }}</p>
+                      </div>
+                    }
+                  </div>
+                  <div class="board-column">
+                    <p class="board-column-title">保留</p>
+                    @for (task of getTasksByStatus('保留'); track task.id) {
+                      <div class="board-card">
+                        <p class="board-card-title">{{ task.title }}</p>
+                      </div>
+                    }
+                  </div>
+                  <div class="board-column">
+                    <p class="board-column-title">完了</p>
+                    @for (task of getTasksByStatus('完了'); track task.id) {
+                      <div class="board-card">
+                        <p class="board-card-title">{{ task.title }}</p>
+                      </div>
+                    }
+                  </div>
+                </div>
+            </div>
+        } @else {
+            <h1>カレンダー</h1>
+        }
+    } @else {
+        <p>プロジェクトが存在しません</p>
+    }
+</div>
+
+<style>
+  .project-detail-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 20px;
+  }
+  .invite-btn {
+    color: white;
+    background-color: #376e45;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .project-detail-header p {
+      margin: 0;
+      padding: 4px 0;
+  }
+  .display-switch-container {
+      display: flex;
+      flex-shrink: 0;
+      border-bottom: 1px solid #d0d6cf;
+      gap: 20px;
+      padding: 0 20px;
+      width: 100%;
+      box-sizing: border-box;
+  }
+  .list {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      overflow: auto;
+      box-sizing: border-box;
+  }
+  .display-switch-btn {
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: none;
+      cursor: pointer;
+      padding: 5px 10px;
+      font-size: 14px;
+  }
+  .display-switch-btn:hover {
+      background-color: #ebf1ee;
+  }
+  .display-switch-btn.active {
+      border-bottom: 2px solid #333;
+  }
+
+  .done-task-table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+      background: white;
+      border-top: 1px solid #ddd;
+  }
+
+  .task-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 14px;
+      color: #222;
+  }
+  .task-table td,
+  .task-table th {
+      font-size: 14px;
+  }
+  .task-table thead th {
+      text-align: left;
+      font-weight: 500;
+      color: #666;
+      padding: 12px 10px;
+      border-bottom: 1px solid #ddd;
+      border-right: 1px solid #eee;
+  }
+  .task-table thead th:last-child {
+      border-right: none;
+  }
+  .task-table-column-checkbox {
+      width: 20px;
+  }
+  .task-table-column-title {
+      min-width: 40%;
+  }
+  .task-table-column-due-date {
+      width: 110px;
+  }
+  .task-table-column-status {
+      width: 80px;
+  }
+  .task-table-column-priority {
+      width: 50px;
+  }
+  .task-table tbody tr {
+      cursor: pointer;
+  }
+  .task-table tbody tr:hover {
+      background-color: #f0f0f0;
+  }
+  .task-table tbody td {
+      padding: 10px 10px;
+      border-bottom: 1px solid #eee;
+      border-right: 1px solid #ddd;
+      vertical-align: middle;
+  }
+  .task-table tbody td:last-child {
+      border-right: none;
+  }
+
+      /* ボード */
+  .board {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .board-columns {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    width: max-content;
+    padding: 0 12px 12px;
+    box-sizing: border-box;
+  }
+  .board-column {
+    /* flex: 0 0 auto; */
+    width: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .board-column-title,
+  .board-card {
+    background-color: #f5f5f5;
+    padding: 12px;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+  .board-column-title {
+    font-size: 20px;
+    font-weight: bold;
+  }
+  .board-card {
+    cursor: pointer;
+  }
+  .board-card:hover {
+    background-color: #e0e0e0;
+  }
+  .board-card-title {
+    font-size: 14px;
+    margin: 6px 0;
+  }
+
+    .task-add-modal {
+        background-color: #b8b8b8;
+    }
+</style>

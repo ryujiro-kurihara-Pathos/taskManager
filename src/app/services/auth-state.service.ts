@@ -1,7 +1,34 @@
-import { Injectable, computed, signal } from '@angular/core';
-import { watchAuthState } from '../auth';
+import { Injectable, signal } from '@angular/core';
+import { User } from 'firebase/auth';
 
-@Injectable({ providedIn: 'root' })
+// アプリ全体で使えるようにする
+@Injectable({
+    providedIn: 'root'
+})
 export class AuthStateService {
-    
+    user = signal<User | null>(null);
+
+    setUser(user: User | null) {
+        this.user.set(user);
+    }
+
+    clearUser() {
+        this.user.set(null);
+    }
+
+    get isLoggedIn(): boolean {
+        return this.user() !== null;
+    }
+
+    get uid(): string {
+        return this.user()?.uid ?? '';
+    }
+
+    get email(): string {
+        return this.user()?.email ?? '';
+    }
+
+    get displayName(): string {
+        return this.user()?.displayName ?? '';
+    }
 }

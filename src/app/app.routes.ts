@@ -4,7 +4,9 @@ import { LoginComponent } from './login/login.component';
 import { SignupComponent } from './signup/signup.component';
 import { ProfileComponent } from './profile/profile.component';
 import { TaskComponent } from './home/tasks/tasks.component';
-import { ProjectComponent } from './home/projects/project.component';
+import { ProjectComponent } from './home/projects/projects.component';
+import { ProjectDetailComponent } from './home/projects/project-detail.component';
+import { ProjectListComponent } from './home/projects/project-list.component';
 
 export const routes: Routes = [
   { 
@@ -12,7 +14,12 @@ export const routes: Routes = [
     children: [
         { path: '', pathMatch: 'full', redirectTo: 'tasks' },
         { path: 'tasks', component: TaskComponent },
-        { path: 'projects', component: ProjectComponent },
+        { path: 'projects', component: ProjectComponent,
+          children: [
+            { path: '', component: ProjectListComponent },
+            { path: ':projectId', component: ProjectDetailComponent },
+          ]
+         },
     ],
 },
   { path: 'signup', component: SignupComponent },

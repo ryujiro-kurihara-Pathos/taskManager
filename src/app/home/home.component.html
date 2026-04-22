@@ -12,8 +12,7 @@
       />
       <button class="search-btn" type="button" (click)="searchTasks()">検索する</button>
     </div>
-    @if (isLoggedIn) {
-      <p class="user-info">ユーザー名: {{ userName }}</p>
+    @if (authState.isLoggedIn) {
       <button class="login-btn" type="button">
         <p class="login-text" (click)="onLogout()">ログアウト</p>
       </button>
@@ -23,323 +22,246 @@
     }
   </div>
   <div class="main-content">
+    <!-- 左サイドバー -->
     <div class="left-side" [class.closed]="!isSidebarOpen">
       <div class="sidebar">
         <p class="sidebar-title">課題管理アプリ</p>
         <div class="sidebar-menu">
           <a class="sidebar-menu-btn"
-           routerLink="/home/tasks" routerLinkActive="active"
-           [routerLinkActiveOptions]="{ exact: true }">マイタスク</a>
-          <a class="sidebar-menu-btn" routerLink="/home/projects" routerLinkActive="active">プロジェクト</a>
+           routerLink="/home/tasks" routerLinkActive="active">マイタスク</a>
+          <a class="sidebar-menu-btn" 
+          routerLink="/home/projects" routerLinkActive="active">プロジェクト</a>
+          <a class="sidebar-menu-btn" 
+          routerLink="/home/inbox" routerLinkActive="active">受信トレイ</a>
+          <a class="sidebar-menu-btn" 
+          routerLink="/home/goals" routerLinkActive="active">ゴール</a>
+          <a class="sidebar-menu-btn" 
+          routerLink="/home/teams" routerLinkActive="active">チーム</a>
+          <a class="sidebar-menu-btn" 
+          routerLink="/home/search" routerLinkActive="active">検索</a>
+          <button class="sidebar-menu-btn" type="button" (click)="addField('projectId', null)">ドキュメント追加</button>
         </div>
       </div>
       <div class="profile" routerLink="/profile">
         <div class="profile-circle"></div>
-        <p class="profile-name">{{ userName }}</p>
+        <p class="profile-name">{{ authState.displayName }}</p>
       </div>
     </div>
+    <!-- メイン -->
     <main class="main">
       <div class="main-container">
-        <!-- <router-outlet /> -->
-        <div class="tasks-container">
-          <div class="display-switch-container">
-              <button
-                class="display-switch-btn"
-                type="button"
-                [class.active]="displayFormat === 'list'"
-                (click)="displayFormat = 'list'"
-              >
-                リスト
-              </button>
-              <button
-                class="display-switch-btn"
-                type="button"
-                [class.active]="displayFormat === 'board'"
-                (click)="displayFormat = 'board'"
-              >
-                ボード
-              </button>
-              <button
-                class="display-switch-btn"
-                type="button"
-                [class.active]="displayFormat === 'calendar'"
-                (click)="displayFormat = 'calendar'"
-              >
-                カレンダー
-              </button>
-            </div>
-            <button class="add-task-btn" type="button" (click)="openAddTaskModal()">+ タスクを追加</button>
-            @if (displayFormat === 'list') {
-              <div class="list">
-                <div class="task-table-wrapper">
-                  <table class="task-table">
-                    <thead class="task-table-head">
-                      <tr>
-                        <th class="task-table-column-checkbox"></th>
-                        <th class="task-table-column-title">タスク名</th>
-                        <th class="task-table-column-due-date">期限</th>
-                        <th class="task-table-column-status">進捗</th>
-                        <th class="task-table-column-priority">優先度</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @for (task of getNotDoneTasks(); track task.id) {
-                        <tr
-                          (click)="openEditTaskModal(task.id)"
-                          [ngClass]="getDueDateStatus(task.dueDate, task.status)"
-                        >
-                          <td>
-                            <input
-                              type="checkbox"
-                              (click)="toggleTaskSelection(task.id); $event.stopPropagation()"
-                            />
-                          </td>
-                          <td>{{ task.title }}</td>
-                          <td>{{ task.dueDate }}</td>
-                          <td>{{ task.status }}</td>
-                          <td>{{ task.priority }}</td>
-                        </tr>
-                      }
-                    </tbody>
-                  </table>
-                </div>
-                <div class="done-task-container">
-                  <h3>完了したタスク</h3>
-                  @for (task of getDoneTasks(); track task.id) {
-                    <div class="done-task-table-wrapper">
-                      <table class="task-table">
-                        <tbody>
-                          <tr
-                            (click)="openEditTaskModal(task.id)"
-                            [ngClass]="getDueDateStatus(task.dueDate, task.status)"
-                          >
-                            <td class="task-table-column-checkbox">
-                              <input
-                                type="checkbox"
-                                (click)="toggleTaskSelection(task.id); $event.stopPropagation()"
-                              />
-                            </td>
-                            <td class="task-table-column-title">{{ task.title }}</td>
-                            <td class="task-table-column-due-date">{{ task.dueDate }}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  }
-                </div>
-              </div>
-            } @else if (displayFormat === 'board') {
-              <div class="board">
-                <div class="board-columns">
-                  <div class="board-column">
-                    <p class="board-column-title">未着手</p>
-                    @for (task of getTasksByStatus('未着手'); track task.id) {
-                      <p class="board-card-title">{{ task.title }}</p>
-                    }
-                  </div>
-                  <div class="board-column">
-                    <p class="board-column-title">進行中</p>
-                    @for (task of getTasksByStatus('進行中'); track task.id) {
-                      <p class="board-card-title">{{ task.title }}</p>
-                    }
-                  </div>
-                  <div class="board-column">
-                    <p class="board-column-title">保留</p>
-                    @for (task of getTasksByStatus('保留'); track task.id) {
-                      <p class="board-card-title">{{ task.title }}</p>
-                    }
-                  </div>
-                  <div class="board-column">
-                    <p class="board-column-title">完了</p>
-                    @for (task of getTasksByStatus('完了'); track task.id) {
-                      <p class="board-card-title">{{ task.title }}</p>
-                    }
-                  </div>
-                </div>
-              </div>
-            } @else if (displayFormat === 'calendar') {
-              <h2>カレンダー</h2>
-            }
-            @if (selectedTaskIds.length > 0) {
-              <button class="delete-selected-task-btn" type="button" (click)="deleteSelectedTask()">
-                一括削除
-              </button>
-            }
-            @if (searchedTasks.length > 0) {
-              @for (task of searchedTasks; track task.id) {
-                <p>{{ task.title }}</p>
-              }
-            }
-      </div>
+        <router-outlet />
       </div>
     </main>
   </div>
-  @if (isAddingTask) {
-    <div class="modal add-task-modal" (click)="closeAddTaskModal()">
-      <div class="modal-form add-task-form" (click)="$event.stopPropagation()">
-        <div class="modal-top">
-          <p class="add-task-title">タスクを追加</p>
-          <button class="add-task-close-btn" type="button" (click)="closeAddTaskModal()">×</button>
+
+  @if (modalState.isOpen) {
+    @if (modalState.type === 'task-add') {
+      <div class="modal add-task-modal" (click)="closeModal()">
+        <div class="modal-form add-task-form" (click)="$event.stopPropagation()">
+          <div class="modal-top">
+            <p class="add-task-title">タスクを追加</p>
+            <button class="add-task-close-btn" type="button" (click)="closeModal()">×</button>
+          </div>
+          <div class="add-task-content">
+            <div class="add-task-item">
+              <p class="add-label">タスク名</p>
+              <input
+                type="text"
+                [(ngModel)]="addingTask.title"
+                class="add-task-name-input"
+                placeholder="タスク名を入力してください"
+              />
+            </div>
+            <div class="add-task-item">
+              <p class="add-label">開始日</p>
+              <input
+                type="date"
+                [(ngModel)]="addingTask.startDate"
+                class="add-task-due-date-input"
+              />
+            </div>
+            <div class="add-task-item">
+              <p class="add-label">期日</p>
+              <input
+                type="date"
+                [(ngModel)]="addingTask.dueDate"
+                class="add-task-due-date-input"
+              />
+            </div>
+            <div class="add-task-item">
+              <p class="add-label">ステータス</p>
+              <select [(ngModel)]="addingTask.status" name="status">
+                <option value="">-</option>
+                <option value="未着手">未着手</option>
+                <option value="進行中">進行中</option>
+                <option value="完了">完了</option>
+              </select>
+            </div>
+            <div class="add-task-item">
+              <p class="add-label">優先度</p>
+              <select [(ngModel)]="addingTask.priority" name="priority">
+                <option value="">-</option>
+                <option value="高">高</option>
+                <option value="中">中</option>
+                <option value="低">低</option>
+              </select>
+            </div>
+            <div class="add-task-item">
+              <p class="add-label">メモ</p>
+              <input
+                type="text"
+                [(ngModel)]="addingTask.memo"
+                class="add-task-memo-input"
+                placeholder="メモを入力してください"
+              />
+            </div>
+            <div class="add-task-item">
+              <p class="add-label">サブタスク</p>
+              <button class="add-subtask-btn" type="button">+</button>
+            </div>
+          </div>
+          <button class="add-task-save-btn" type="button" (click)="addTask()">追加</button>
         </div>
-        <div class="add-task-content">
-          <div class="add-task-item">
-            <p class="add-label">タスク名</p>
-            <input
-              type="text"
-              [(ngModel)]="taskTitle"
-              class="add-task-name-input"
-              placeholder="タスク名を入力してください"
-            />
-          </div>
-          <div class="add-task-item">
-            <p class="add-label">期日</p>
-            <input
-              type="date"
-              [(ngModel)]="taskDueDate"
-              class="add-task-due-date-input"
-              placeholder="期限を入力してください"
-            />
-          </div>
-          <div class="add-task-item">
-            <p class="add-label">ステータス</p>
-            <select [(ngModel)]="taskStatus" name="status">
-              <option value="">-</option>
-              <option value="未着手">未着手</option>
-              <option value="進行中">進行中</option>
-              <option value="完了">完了</option>
-            </select>
-          </div>
-          <div class="add-task-item">
-            <p class="add-label">優先度</p>
-            <select [(ngModel)]="taskPriority" name="priority">
-              <option value="">-</option>
-              <option value="高">高</option>
-              <option value="中">中</option>
-              <option value="低">低</option>
-            </select>
-          </div>
-          <div class="add-task-item">
-            <p class="add-label">メモ</p>
-            <input
-              type="text"
-              [(ngModel)]="taskMemo"
-              class="add-task-memo-input"
-              placeholder="メモを入力してください"
-            />
-          </div>
-          <div class="add-task-item">
-            <p class="add-label">サブタスク</p>
-            <button class="add-subtask-btn" type="button">+</button>
-          </div>
-        </div>
-        <button class="add-task-save-btn" type="button" (click)="addTask()">追加</button>
       </div>
-    </div>
-  }
-  @if (editingTask != null) {
-    <div class="modal edit-task-modal" (click)="closeEditTaskModal()">
-      <div class="modal-form edit-task-form" (click)="$event.stopPropagation()">
-        <div class="modal-top">
-          <p class="edit-task-title">タスクを編集</p>
-          <button class="edit-task-close-btn" type="button" (click)="closeEditTaskModal()">×</button>
-        </div>
-        <div class="edit-task-hierarchy-container">
-          @for (task of subTaskHierarchy; track task.id) {
-            <button class="edit-task-hierarchy-btn" type="button" (click)="changeEditingTask(task)">
-              {{ task.title }}
-            </button>
-          }
-        </div>
-        <div class="edit-task-content">
-          <input
-            type="text"
-            class="edit-task-name-input"
-            [(ngModel)]="editingTask.title"
-            (blur)="updateTaskField(editingTask.id, 'title', editingTask.title)"
-          />
-          <div class="edit-task-item edit-task-due-date">
-            <p class="edit-label">期日</p>
-            <input
-              type="date"
-              class="edit-task-due-date-input"
-              [(ngModel)]="editingTask.dueDate"
-              placeholder="期限を入力してください"
-              (blur)="updateTaskField(editingTask.id, 'dueDate', editingTask.dueDate)"
-            />
+    } @else if (modalState.type === 'task-edit') {
+      <div class="modal edit-task-modal" (click)="closeModal()">
+        <div class="modal-form edit-task-form" (click)="$event.stopPropagation()">
+          <div class="modal-top">
+            <p class="edit-task-title">タスクを編集</p>
+            <button class="edit-task-close-btn" type="button" (click)="closeModal()">×</button>
           </div>
-          <div class="edit-task-item edit-task-status">
-            <p class="edit-label">ステータス</p>
-            <select
-              id="status-select"
-              [(ngModel)]="editingTask.status"
-              name="status"
-              (change)="updateTaskField(editingTask.id, 'status', editingTask.status)"
-            >
-              <option value="未着手">未着手</option>
-              <option value="進行中">進行中</option>
-              <option value="保留">保留</option>
-              <option value="完了">完了</option>
-            </select>
-          </div>
-          <div class="edit-task-item edit-task-priority">
-            <p class="edit-label">優先度</p>
-            <select
-              id="priority-select"
-              [(ngModel)]="editingTask.priority"
-              name="priority"
-              (change)="updateTaskField(editingTask.id, 'priority', editingTask.priority)"
-            >
-              <option value="">未入力</option>
-              <option value="高">高</option>
-              <option value="中">中</option>
-              <option value="低">低</option>
-            </select>
-          </div>
-          <div class="edit-task-item">
-            <p class="edit-label">メモ</p>
+          <div class="modal-content edit-task-content">
+            <div class="edit-task-hierarchy-container">
+              @for (task of modalState.data.hierarchyTask; track task.id) {
+                <button class="edit-task-hierarchy-btn" type="button" (click)="changeEditingTask(task)">
+                  {{ task.title }}
+                </button>
+              }
+            </div>
             <input
               type="text"
-              class="edit-task-memo-input"
-              [(ngModel)]="editingTask.memo"
-              placeholder="メモを入力してください"
-              (blur)="updateTaskField(editingTask.id, 'memo', editingTask.memo)"
+              class="edit-task-name-input"
+              [(ngModel)]="modalState.data.title"
+              (blur)="updateTitle(modalState.data)"
             />
-          </div>
-          <div class="edit-task-item edit-task-subtasks-container">
-            <p class="edit-label">サブタスク</p>
-            <button class="edit-task-subtask-add-btn" type="button" (click)="addEmptySubTask()">+</button>
-            <div class="edit-task-subtasks-value-container">
-              @for (subTask of subTasks; track subTask.id) {
-                <button class="edit-task-subtask-btn" type="button" (click)="changeEditingTask(subTask)">
-                  <input
+            <div class="edit-task-item edit-task-start-date">
+              <p class="edit-label">開始日</p>
+              <input
+                type="date"
+                class="edit-task-start-date-input"
+                [(ngModel)]="modalState.data.startDate"
+              />
+            </div>
+            <div class="edit-task-item edit-task-due-date">
+              <p class="edit-label">期日</p>
+              <input
+                type="date"
+                class="edit-task-due-date-input"
+                [(ngModel)]="modalState.data.dueDate"
+              />
+            </div>
+            <div class="edit-task-item edit-task-status">
+              <p class="edit-label">ステータス</p>
+              <select
+                id="status-select"
+                [(ngModel)]="modalState.data.status"
+                name="status"
+              >
+                <option value="未着手">未着手</option>
+                <option value="進行中">進行中</option>
+                <option value="保留">保留</option>
+                <option value="完了">完了</option>
+              </select>
+            </div>
+            <div class="edit-task-item edit-task-priority">
+              <p class="edit-label">優先度</p>
+              <select
+                id="priority-select"
+                [(ngModel)]="modalState.data.priority"
+                name="priority"
+              >
+                <option value="">未入力</option>
+                <option value="高">高</option>
+                <option value="中">中</option>
+                <option value="低">低</option>
+              </select>
+            </div>
+            <div class="edit-task-item">
+              <p class="edit-label">メモ</p>
+              <input
+                type="text"
+                class="edit-task-memo-input"
+                [(ngModel)]="modalState.data.memo"
+                placeholder="メモを入力してください"
+              />
+            </div>
+            <div class="edit-task-item edit-task-subtasks-container">
+              <p class="edit-label">サブタスク</p>
+              <button class="edit-task-subtask-add-btn" type="button" (click)="addEmptySubTask(modalState.data.id)">+</button>
+              <div class="edit-task-subtasks-value-container">
+                @if (addingSubTask !== null) {
+                  <div class="edit-task-subtask-item" (click)="changeEditingTask(addingSubTask)">
+                    <input
                     #subTaskInput
                     type="text"
                     class="edit-task-subtask-input"
+                    [(ngModel)]="addingSubTask.title"
+                    (blur)="addSubTask(addingSubTask)"
+                    />
+                  </div>
+                }
+                @for (subTask of modalState.data.subTasks; track subTask.id) {
+                  <div class="edit-task-subtask-item" (click)="changeEditingTask(subTask)">
+                    <input
+                    type="text"
+                    class="edit-task-subtask-input"
                     [(ngModel)]="subTask.title"
-                    (blur)="updateSubTask(subTask)"
-                  />
-                </button>
-              }
+                    (blur)="updateTitle(subTask)"
+                    />
+                  </div>
+                }
+              </div>
+            </div>
+            <div class="edit-task-item">
+              <p class="edit-label">コメント</p>
+              <input type="text" [(ngModel)]="commentContent" placeholder="コメントを入力してください" />
+              <button class="edit-task-comment-add-btn" type="button" (click)="addComment(modalState.data.id)">コメント</button>
+              <div class="edit-task-comments-container">
+                @for (comment of modalState.data.comments; track comment.id) {
+                  <p class="edit-task-comment-content">{{ comment.content }}</p>
+                  <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)">
+                    削除
+                  </button>
+                }
+              </div>
             </div>
           </div>
-          <div class="edit-task-item">
-            <p class="edit-label">コメント</p>
-            <input type="text" [(ngModel)]="commentContent" placeholder="コメントを入力してください" />
-            <button class="edit-task-comment-add-btn" type="button" (click)="addComment()">コメント</button>
-            <div class="edit-task-comments-container">
-              @for (comment of comments; track comment.id) {
-                <p class="edit-task-comment-content">{{ comment.content }}</p>
-                <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)">
-                  削除
-                </button>
-              }
+          <button class="edit-task-delete-btn" type="button" (click)="deleteTask(modalState.data.id)">削除</button>
+        </div>
+      </div>
+    } @else if (modalState.type === 'project-invite') {
+      <div class="modal">
+        <div class="modal-form">
+          <div class="modal-top">
+            <p>{{ modalState.data.name }} への招待</p>
+            <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
+          </div>
+          <div class="modal-content">
+            <div class="modal-content-item">
+              <p class="modal-content-label">メールで招待</p>
+              <div class="modal-content-email-input-container">
+                <input type="email" [(ngModel)]="projectInviteInput.email" placeholder="メールアドレスを入力してください" />
+                <button class="project-invite-btn" type="button">招待</button>
+              </div>
             </div>
           </div>
         </div>
-        <button class="edit-task-delete-btn" type="button" (click)="deleteTask(editingTask.id)">削除</button>
       </div>
-    </div>
+    }
   }
+
+
 </div>
 
 <style>
@@ -501,147 +423,11 @@
     justify-content: flex-start;
     gap: 20px;
   }
-  .display-switch-container {
-    display: flex;
-    flex-shrink: 0;
-    border-bottom: 1px solid #d0d6cf;
-    gap: 20px;
-    margin-top: 10px;
-    padding: 0 20px;
-    width: 100%;
-    box-sizing: border-box;
-  }
   .main-container > .add-task-btn {
     align-self: center;
     flex-shrink: 0;
   }
-  .list {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-    overflow: auto;
-    box-sizing: border-box;
-  }
-  .display-switch-btn {
-    border: none;
-    border-bottom: 2px solid transparent;
-    background: none;
-    cursor: pointer;
-    padding: 5px 10px;
-    font-size: 14px;
-  }
-  .display-switch-btn:hover {
-    background-color: #ebf1ee;
-  }
-  .display-switch-btn.active {
-    border-bottom: 2px solid #333;
-  }
-  .task-table-wrapper,
-  .done-task-table-wrapper {
-    width: 100%;
-    overflow-x: auto;
-    background: white;
-  }
-  .done-task-table-wrapper {
-    border-top: 1px solid #ddd;
-  }
-  .task-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-    font-size: 14px;
-    color: #222;
-  }
-  .task-table td,
-  .task-table th {
-    font-size: 14px;
-  }
-  .task-table thead th {
-    text-align: left;
-    font-weight: 500;
-    color: #666;
-    padding: 12px 10px;
-    border-bottom: 1px solid #ddd;
-    border-right: 1px solid #eee;
-  }
-  .task-table thead th:last-child {
-    border-right: none;
-  }
-  .task-table-column-checkbox {
-    width: 20px;
-  }
-  .task-table-column-title {
-    min-width: 40%;
-  }
-  .task-table-column-due-date {
-    width: 110px;
-  }
-  .task-table-column-status {
-    width: 80px;
-  }
-  .task-table-column-priority {
-    width: 50px;
-  }
-  .task-table tbody tr {
-    cursor: pointer;
-  }
-  .task-table tbody tr:hover {
-    background-color: #f0f0f0;
-  }
-  .task-table tbody td {
-    padding: 10px 10px;
-    border-bottom: 1px solid #eee;
-    border-right: 1px solid #ddd;
-    vertical-align: middle;
-  }
-  .task-table tbody td:last-child {
-    border-right: none;
-  }
-  .done-task-container {
-    display: flex;
-    flex-direction: column;
-  }
-  .overdue {
-    background-color: rgb(231, 158, 158);
-  }
-  .near {
-    background-color: rgb(247, 247, 163);
-  }
-  .board {
-    flex: 1;
-    min-height: 0;
-    min-width: 0;
-    width: 100%;
-    box-sizing: border-box;
-    overflow-x: auto;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .board-columns {
-    display: flex;
-    gap: 16px;
-    align-items: flex-start;
-    width: max-content;
-    padding: 0 12px 12px;
-    box-sizing: border-box;
-  }
-  .board-column {
-    flex: 0 0 auto;
-    width: 200px;
-    background: #f5f5f5;
-    padding: 12px;
-    border-radius: 8px;
-    min-height: 200px;
-    box-sizing: border-box;
-  }
-  .board-column-title {
-    font-size: 20px;
-    font-weight: bold;
-  }
-  .board-card-title {
-    font-size: 14px;
-    margin: 6px 0;
-  }
+
   .delete-selected-task-btn {
     flex-shrink: 0;
   }
@@ -658,20 +444,26 @@
     z-index: 200;
   }
   .modal-form {
-    padding: 0 10px;
     display: flex;
     flex-direction: column;
     width: 85%;
     height: 70%;
     background-color: white;
+    border-radius: 10px;
     box-sizing: border-box;
   }
   .modal-top {
+    padding: 0 10px;
     line-height: 1;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    border-bottom: 1px solid #e0e0e0;
   }
+  .modal-content {
+    padding: 10px 10px;
+  }
+
   .add-task-btn {
     border: none;
     padding: 4px 12px;
@@ -762,17 +554,18 @@
   .edit-task-subtask-add-btn:hover {
     background-color: #f0f0f0;
   }
-  .edit-task-subtask-btn {
+  .edit-task-subtask-item {
     min-width: 200px;
     height: 30px;
     background: #999;
     border: none;
     cursor: pointer;
   }
-  .edit-task-subtask-btn:hover {
+  .edit-task-subtask-item:hover {
     background-color: #e0e0e0;
   }
   .edit-task-subtask-input {
+    margin-left: 20px;
     width: 100px;
     border: none;
   }
@@ -781,4 +574,6 @@
     flex-direction: column;
     gap: 8px;
   }
+
+  /* プロジェクト */
 </style>
