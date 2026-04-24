@@ -3,7 +3,12 @@ import { BehaviorSubject } from 'rxjs';
 import { getComments, getSubTasks, getTask } from '../firestore';
 import { Task } from '../types/task';
 
-type ModalType = 'task-edit' | 'task-add' | 'project-invite' | null;
+type ModalType =
+'task-edit' | 
+'task-add' | 
+'project-invite' |
+'member-list' |
+null;
 
 export interface ModalState {
     isOpen: boolean;

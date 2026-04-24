@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { User } from 'firebase/auth';
+import { User } from '../types/user';
 
 // アプリ全体で使えるようにする
 @Injectable({
@@ -21,14 +21,14 @@ export class AuthStateService {
     }
 
     get uid(): string {
-        return this.user()?.uid ?? '';
+        return this.user()?.id ?? '';
     }
 
     get email(): string {
         return this.user()?.email ?? '';
     }
 
-    get displayName(): string {
-        return this.user()?.displayName ?? '';
+    get userName(): string {
+        return this.user()?.userName ?? '';
     }
 }

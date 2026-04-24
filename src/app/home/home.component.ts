@@ -14,6 +14,8 @@ import {
   getSubTasks,
   getTask,
   deleteChildrenTask,
+  inviteToProject,
+  isAdmin,
 } from '../firestore';
 import { TaskComponent } from './tasks/tasks.component';
 import { AuthStateService } from '../services/auth-state.service';
@@ -21,7 +23,8 @@ import { TasksService } from '../services/tasks.service';
 import { AuthService } from '../services/auth.service';
 import { Task, Comment, AddTaskInput, initialTask } from '../types/task';
 import { ModalService, ModalState } from '../services/modal.service';
-import { AddProjectInviteInput, initialProjectInviteInput } from '../types/project';
+import { AddProjectInviteInput, initialProjectInviteInput } from '../types/project';  
+import { logout } from '../auth';
 
 @Component({
   selector: 'app-home',
@@ -41,6 +44,7 @@ export class HomeComponent implements OnInit {
   };
 
   constructor(
+    private router: Router,
     private modalService: ModalService
   ) {
     effect(() => {
@@ -66,12 +70,13 @@ export class HomeComponent implements OnInit {
   // タスク
   isSidebarOpen: boolean = true;
   sidebarTabs: 'tasks' | 'projects' | 'teams' = 'tasks';
-  addingTask: AddTaskInput = initialTask;
+  addingTask: AddTaskInput = { ...initialTask };
   addingSubTask: Task | null = null;
   commentContent: string = '';
 
   // プロジェクト
   projectInviteInput: AddProjectInviteInput = initialProjectInviteInput;
+  inviteEmailOrUserName: string = '';
 
   searchQuery: string = '';
   searchedTasks: Task[] = [];
@@ -99,8 +104,8 @@ export class HomeComponent implements OnInit {
   // ログアウト
   async onLogout() {
     try {
-      // await logout();
-      // this.router.navigate(['/login']);
+      await logout();
+      this.router.navigate(['/login']);
     } catch (error) {
       console.error(error);
     }
@@ -112,7 +117,7 @@ export class HomeComponent implements OnInit {
       const newTask = await addTask(this.authState.uid, this.addingTask);
       this.tasksService.addTask(newTask as Task);
       this.closeModal();
-      this.addingTask = initialTask;
+      this.addingTask = { ...initialTask };
     } catch (error) {
       console.error("タスク追加失敗: ", error);
     }
@@ -298,6 +303,40 @@ export class HomeComponent implements OnInit {
       this.modalState.data.comments = this.modalState.data.comments.filter((comment: Comment) => comment.id !== commentId);
     } catch (error) {
       console.error("コメント削除失敗: ", error);
+    }
+  }
+
+  // プロジェクト
+  // プロジェクトへの招待
+  async inviteToProject(projectId: string) {
+    try {
+      await inviteToProject(
+        projectId,
+        this.inviteEmailOrUserName,
+        this.authState.user()?.email ?? '',
+        this.authState.uid,
+      );
+      this.closeModal();
+    } catch (error) {
+      console.error("プロジェクトへの招待失敗: ", error);
+    }
+  }
+
+  // そのメンバーが自分かどうか
+  isMemberSelf(memberId: string) {
+    return memberId === this.authState.uid;
+  }
+
+  // メンバーを削除
+  async deleteMember(projectId: string) {
+    try {
+      // 管理者でないなら削除できない
+      const isAdminUser = await isAdmin(this.authState.uid, projectId);
+      if (!isAdminUser) return;
+      // メンバーを削除
+      
+    } catch (error) {
+      console.error("メンバー削除失敗: ", error);
     }
   }
 }

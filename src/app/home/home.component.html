@@ -44,7 +44,7 @@
       </div>
       <div class="profile" routerLink="/profile">
         <div class="profile-circle"></div>
-        <p class="profile-name">{{ authState.displayName }}</p>
+        <p class="profile-name">{{ authState.userName }}</p>
       </div>
     </div>
     <!-- メイン -->
@@ -251,9 +251,32 @@
             <div class="modal-content-item">
               <p class="modal-content-label">メールで招待</p>
               <div class="modal-content-email-input-container">
-                <input type="email" [(ngModel)]="projectInviteInput.email" placeholder="メールアドレスを入力してください" />
-                <button class="project-invite-btn" type="button">招待</button>
+                <input type="email" [(ngModel)]="inviteEmailOrUserName" placeholder="メールアドレスを入力してください" />
+                <button class="project-invite-btn" type="button" (click)="inviteToProject(modalState.data.id)">招待</button>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    } @else if (modalState.type === 'member-list') {
+      <div class="modal">
+        <div class="modal-form">
+          <div class="modal-top">
+            <p>{{ modalState.data.name }}のメンバー</p>
+            <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
+          </div>
+          <div class="modal-content">
+            <div class="modal-project-member-list">
+              @for (member of modalState.data.memberIds; track member) {
+                <div class="modal-project-member">
+                  <button class="member-btn">
+                    <p>{{ member }}</p>
+                  </button>
+                  <button class="member-remove-btn">
+                    削除
+                  </button>
+                </div>
+              }
             </div>
           </div>
         </div>
@@ -576,4 +599,7 @@
   }
 
   /* プロジェクト */
+  .member-btn.active {
+    background-color: #f0f0f0;
+  }
 </style>

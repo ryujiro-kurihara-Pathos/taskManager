@@ -43,8 +43,8 @@ export class ProjectListComponent {
             if (! user) return;
             const project = await addProject({
                 name: this.newProjectName,
-                ownerId: user.uid,
-                memberIds: [user.uid],
+                ownerId: user.id,
+                memberIds: [user.id],
                 visibility: 'private',
                 isArchived: false,
                 description: '',
@@ -65,7 +65,7 @@ export class ProjectListComponent {
     // プロジェクトを取得
     async getProjects() {
         try {
-            const projects = await getProjects();
+            const projects = await getProjects(this.authState.uid);
             this.projects = projects;
         } catch (error) {
             console.error('プロジェクト取得に失敗しました', error);

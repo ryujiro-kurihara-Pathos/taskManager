@@ -27,6 +27,35 @@
   </div>
     <!-- <button class="add-task-btn" type="button" (click)="tasksService.openAddTaskModal()">+ タスクを追加</button> -->
     <button class="add-task-btn" type="button" (click)="openTaskModal('task-add', null)">+ タスクを追加</button>
+    <div class="menu-wrapper">
+      <button class="toolbar-btn" type="button" 
+        [class.active]="isSortMenuOpen"
+        [class.selected]="isSelectedSort"
+        (click)="toggleSortMenu()">ソート</button>
+      @if (tasksService.sortKey !== null) {
+        <button class="clear-btn" type="button" (click)="clearSort()">×</button>
+      }
+      @if (isSortMenuOpen) {
+        <div class="dropdown-menu">
+          <button class="menu-item" (click)="selectSort('dueDate')">期日</button>
+          <button class="menu-item" (click)="selectSort('createdAt')">作成日</button>
+          <button class="menu-item" (click)="selectSort('updatedAt')">最終変更日</button>
+        </div>
+      }
+    </div>
+    <div class="menu-wrapper">
+      <button class="toolbar-btn" type="button"
+      [class.active]="isFilterMenuOpen"
+      (click)="toggleFilterMenu()">フィルター</button>
+      @if (isFilterMenuOpen) {
+        <div class="dropdown-menu">
+          <button class="menu-item">未完了タスク</button>
+          <button class="menu-item">完了タスク</button>
+          <button class="menu-item">今週期限</button>
+          <button class="menu-item">来週期限</button>
+        </div>
+      }
+    </div>
     @if (tasksService.displayFormat === 'list') {
       <!-- リスト -->
       <div class="list">
@@ -64,12 +93,12 @@
         </div>
         <div class="done-task-container">
           <h3>完了したタスク</h3>
-          @for (task of tasksService.getDoneTasks(); track task.id) {
+          @for (task of getDoneTasks(); track task.id) {
             <div class="done-task-table-wrapper">
               <table class="task-table">
                 <tbody>
                   <tr
-                    (click)="tasksService.openEditTaskModal(task.id)"
+                    (click)="openTaskModal('task-edit', task)"
                     [ngClass]="getDueDateStatus(task.dueDate, task.status)"
                   >
                     <td class="task-table-column-checkbox">
@@ -94,7 +123,7 @@
           <div class="board-column">
             <p class="board-column-title">未着手</p>
             @for (task of tasksService.getTasksByStatus('未着手'); track task.id) {
-              <div class="board-card" (click)="tasksService.openEditTaskModal(task.id)">
+              <div class="board-card" (click)="openTaskModal('task-edit', task)">
                 <p class="board-card-title">{{ task.title }}</p>
               </div>
             }
@@ -102,7 +131,7 @@
           <div class="board-column">
             <p class="board-column-title">進行中</p>
             @for (task of tasksService.getTasksByStatus('進行中'); track task.id) {
-              <div class="board-card" (click)="tasksService.openEditTaskModal(task.id)">
+              <div class="board-card" (click)="openTaskModal('task-edit', task)">
                 <p class="board-card-title">{{ task.title }}</p>
               </div>
             }
@@ -110,7 +139,7 @@
           <div class="board-column">
             <p class="board-column-title">保留</p>
             @for (task of tasksService.getTasksByStatus('保留'); track task.id) {
-              <div class="board-card" (click)="tasksService.openEditTaskModal(task.id)">
+              <div class="board-card" (click)="openTaskModal('task-edit', task)">
                 <p class="board-card-title">{{ task.title }}</p>
               </div>
             }
@@ -118,7 +147,7 @@
           <div class="board-column">
             <p class="board-column-title">完了</p>
             @for (task of tasksService.getTasksByStatus('完了'); track task.id) {
-              <div class="board-card" (click)="tasksService.openEditTaskModal(task.id)">
+              <div class="board-card" (click)="openTaskModal('task-edit', task)">
                 <p class="board-card-title">{{ task.title }}</p>
               </div>
             }
@@ -205,6 +234,65 @@
   .display-switch-btn.active {
     border-bottom: 2px solid #333;
   }
+
+  /* メニュー */
+  .menu-wrapper {
+    position: relative;
+    display: inline-block;
+  }
+  .toolbar-btn,
+  .clear-btn {
+    height: 30px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  /* .toolbar-btn {
+    padding: 0 14px;
+  }
+  .clear-btn {
+    font-size: 16px;
+    line-height: 1;
+  } */
+  .toolbar-btn:hover,
+  .clear-btn:hover {
+    background: #ececec;
+  }
+  .toolbar-btn.active {
+    background: #ececec;
+  }
+  .dropdown-menu {
+    position: absolute;
+    top: 36px;
+    left: 0;
+    width: 180px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    padding: 8px 0;
+    z-index: 10;
+  }
+  .menu-item {
+    width: 100%;
+    height: 40px;
+    border: none;
+    background: white;
+    text-align: left;
+    padding: 0 14px;
+    cursor: pointer;
+  }
+  .menu-item:hover {
+    background: #f5f5f5;
+  }
+
+
+  /* リスト */
   .task-table-wrapper,
   .done-task-table-wrapper {
     width: 100%;

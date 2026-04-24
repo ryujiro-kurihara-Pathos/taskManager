@@ -12,7 +12,15 @@ export class AuthService {
 
     constructor() {
         onAuthStateChanged(this.auth, (user: User | null) => {
-            this.authState.setUser(user);
+            const uid = user?.uid;
+            if (!uid) return;
+            this.authState.setUser({
+                id: uid,
+                email: user?.email ?? '',
+                userName: user?.displayName ?? '',
+                photoURL: user?.photoURL ?? null,
+                createdAt: user?.metadata.creationTime ?? '',
+            });
         });
     }
 }

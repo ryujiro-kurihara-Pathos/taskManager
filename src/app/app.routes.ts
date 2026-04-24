@@ -7,6 +7,7 @@ import { TaskComponent } from './home/tasks/tasks.component';
 import { ProjectComponent } from './home/projects/projects.component';
 import { ProjectDetailComponent } from './home/projects/project-detail.component';
 import { ProjectListComponent } from './home/projects/project-list.component';
+import { InviteResponseComponent } from './home/projects/invite-response.component';
 
 export const routes: Routes = [
   { 
@@ -26,4 +27,6 @@ export const routes: Routes = [
   { path: 'login', component: LoginComponent },
   { path: 'profile', component: ProfileComponent },
   { path: '', redirectTo: 'home', pathMatch: 'full' },
+
+  { path: 'invite-response/:inviteId', component: InviteResponseComponent },
 ];

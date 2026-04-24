@@ -3,7 +3,7 @@ import {
     getMainTasks, 
     getTask,
  } from '../firestore';
-import { Task, AddTaskInput } from '../types/task';
+import { FilterKey, SortKey, Task } from '../types/task';
 import { AuthStateService } from './auth-state.service';
 
 @Injectable({
@@ -25,6 +25,10 @@ export class TasksService {
     // サブタスク
     subTasks: Task[] = [];
     subTaskHierarchy: Task[] = [];
+
+    // ソート・フィルター
+    sortKey: SortKey = null;
+    filterKey: FilterKey = null;
 
     setTasks(tasks: Task[]) {
         this.tasks.set(tasks);
@@ -53,20 +57,31 @@ export class TasksService {
     // タスクを読み込む
     async loadMainTasks() {
         try {
-            const tasks = await getMainTasks();
+            const tasks = await getMainTasks(this.authState.uid);
             this.setTasks(tasks);
         } catch (error) {
             console.error('タスク読み込み失敗: ', error);
         }
     }
-
+    
+    // 未完了のタスクを取得
+    getNotDoneTasks() {
+        let tasks = this.tasks().filter(task => task.status !== '完了');
+        if(this.sortKey) {
+            tasks.sort((a, b) => {
+                if(this.sortKey === 'dueDate') {
+                    const aTime = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+                    const bTime = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+                    return aTime - bTime;
+                }
+                return 0;
+            });
+        }
+        return tasks;
+    }
     // 完了したタスクを取得
     getDoneTasks() {
         return this.tasks().filter(task => task.status === '完了');
-    }
-    // 未完了のタスクを取得
-    getNotDoneTasks() {
-        return this.tasks().filter(task => task.status !== '完了');
     }
     // 状態別のタスク取得
     getTasksByStatus(status: string) {

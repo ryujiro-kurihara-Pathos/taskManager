@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
-import { getProject } from '../../firestore';
+import { ActivatedRoute, Router } from '@angular/router';
+import { getProject, leaveProject } from '../../firestore';
 import { Project } from '../../types/project';
 import { getTasksByProjectId } from '../../firestore';
 import { AddTaskInput, Task } from '../../types/task';
@@ -16,10 +16,14 @@ import { ModalService } from '../../services/modal.service';
 })
 
 export class ProjectDetailComponent {
-    constructor(private modalService: ModalService) {}
+    constructor(private modalService: ModalService, private router: Router) {}
 
-    onProjectInviteClick(project: Project) {
+    openProjectInviteModal(project: Project) {
         this.modalService.open('project-invite', project);
+    }
+
+    openMemberListModal(project: Project) {
+        this.modalService.open('member-list', project);
     }
 
     private route = inject(ActivatedRoute);
@@ -30,15 +34,10 @@ export class ProjectDetailComponent {
     displayFormat: 'list' | 'board' | 'calendar' = 'list';
 
     // メイン
-    // プロジェクトID
     projectId = this.route.snapshot.paramMap.get('projectId');
-    // プロジェクト
     project: Project | null = null;
-    // プロジェクトに所属するタスク
     tasks: Task[] = [];
-    // タスク追加モーダル
     isTaskAddModalOpen: boolean = false;
-    // 新しいタスク名
     newTaskTitle: string = '';
 
     async ngOnInit() {
@@ -95,7 +94,7 @@ export class ProjectDetailComponent {
                 parentTaskId: null,
                 projectId: this.projectId,
             }
-            const newTask = await addTask(user.uid, task);
+            const newTask = await addTask(user.id, task);
             if (!newTask) return;
             this.tasks.push(newTask);
             this.closeTaskAddModal();
@@ -104,8 +103,22 @@ export class ProjectDetailComponent {
             return;
         }
     }
-
+    // 状況別のタスク取得
     getTasksByStatus(status: string) {
         return this.tasks.filter(task => task.status === status);
     }
+
+    // プロジェクトを抜ける
+    async leaveProject(projectId: string) {
+        try {
+            const user = this.authStateService.user();
+            if(!user) return;
+            await leaveProject(projectId, user.id);
+            this.router.navigate(['/home/projects']);
+        } catch (error) {
+            console.error('プロジェクトを抜けれませんでした', error);
+            return;
+        }
+    }
 }
+

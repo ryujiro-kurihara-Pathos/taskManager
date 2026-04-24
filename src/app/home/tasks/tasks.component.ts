@@ -3,6 +3,7 @@ import { TasksService } from '../../services/tasks.service';
 import { CommonModule } from '@angular/common';
 import { ModalService } from '../../services/modal.service';
 import { getComments } from '../../firestore';
+import { FilterKey, SortKey } from '../../types/task';
 
 @Component({
     selector: 'app-tasks',
@@ -27,6 +28,11 @@ export class TaskComponent implements OnInit {
   // カレンダー
   weekDates: Date[] = [];
   currentDate = new Date();
+
+  // メニュー
+  isSortMenuOpen: boolean = false;
+  isFilterMenuOpen: boolean = false;
+  isSelectedSort: boolean = false;
 
   ngOnInit() {
     this.weekDates = this.getWeekDates(this.currentDate);
@@ -55,8 +61,47 @@ export class TaskComponent implements OnInit {
   }
 
   getNotDoneTasks() {
-      return this.tasksService.getNotDoneTasks();
+    return this.tasksService.getNotDoneTasks();
+  }
+  getDoneTasks() {
+    return this.tasksService.getDoneTasks();
+  }
+
+  // ソート・フィルター
+  toggleSortMenu() {
+    if(this.isSortMenuOpen) {
+      this.isSortMenuOpen = false;
+    } else {
+      this.isFilterMenuOpen = false;
+      this.isSortMenuOpen = true;
     }
+  }
+  toggleFilterMenu() {
+    if(this.isFilterMenuOpen) {
+      this.isFilterMenuOpen = false;
+    } else {
+      this.isSortMenuOpen = false;
+      this.isFilterMenuOpen = true;
+    }
+  }
+  selectSort(sortKey: SortKey) {
+    this.tasksService.sortKey = sortKey;
+    this.isSortMenuOpen = false;
+    this.isSelectedSort = true;
+  }
+  selectFilter(filterKey: FilterKey) {
+    this.tasksService.filterKey = filterKey;
+    this.isFilterMenuOpen = false;
+  }
+  clearSort() {
+    this.tasksService.sortKey = null;
+    this.closeSortAndFilterMenu();
+  }
+  closeSortAndFilterMenu() {
+    this.isSortMenuOpen = false;
+    this.isFilterMenuOpen = false;
+  }
+
   // 期限の状態を取得
   getDueDateStatus(dueDate: string | null, taskStatus: string) {
       if(taskStatus === '完了') return '';

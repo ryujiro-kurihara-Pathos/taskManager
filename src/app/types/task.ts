@@ -17,16 +17,7 @@ export type Task = {
     originalTitle: string;
 };
 
-export type AddTaskInput = {
-    title: string;
-    status: '未着手' | '進行中' | '保留' | '完了';
-    priority: '高' | '中' | '低';
-    dueDate: string | null;
-    startDate: string | null;
-    memo: string | null;
-    parentTaskId: string | null;
-    projectId: string | null;
-}
+export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
 
 export const initialTask: AddTaskInput = {
     title: '',
@@ -52,3 +43,6 @@ export type AddCommentInput = {
     content: string;
     uid: string;
 }
+
+export type SortKey = 'dueDate' | 'createdAt' | 'updatedAt' | null;
+export type FilterKey = 'notDone' | 'done' | 'thisWeek' | 'nextWeek' | null;
