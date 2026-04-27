@@ -19,6 +19,9 @@ export type ProjectInvite = {
     status: 'pending' | 'accepted' | 'declined' | 'left';
     createdAt: string;
     email: string;
+
+    isRead: boolean;
+    isImportant: boolean;
 }
 
 export type AddProjectInviteInput = Omit<ProjectInvite, 'id' | 'createdAt'>;
@@ -29,4 +32,6 @@ export const initialProjectInviteInput: AddProjectInviteInput = {
     invitedByUid: '',
     status: 'pending',
     email: '',
+    isRead: false,
+    isImportant: false,
 }
