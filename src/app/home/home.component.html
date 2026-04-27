@@ -241,8 +241,8 @@
         </div>
       </div>
     } @else if (modalState.type === 'project-invite') {
-      <div class="modal">
-        <div class="modal-form">
+      <div class="modal" (click)="closeModal()">
+        <div class="modal-form" (click)="$event.stopPropagation()">
           <div class="modal-top">
             <p>{{ modalState.data.name }} への招待</p>
             <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
@@ -258,7 +258,7 @@
           </div>
         </div>
       </div>
-    } @else if (modalState.type === 'member-list') {
+    } @else if (modalState.type === 'project-member-list') {
       <div class="modal">
         <div class="modal-form">
           <div class="modal-top">
@@ -267,12 +267,12 @@
           </div>
           <div class="modal-content">
             <div class="modal-project-member-list">
-              @for (member of modalState.data.memberIds; track member) {
+              @for (memberId of modalState.data.memberIds; track memberId) {
                 <div class="modal-project-member">
                   <button class="member-btn">
-                    <p>{{ member }}</p>
+                    <p>{{ memberId }}</p>
                   </button>
-                  <button class="member-remove-btn">
+                  <button class="member-remove-btn" (click)="deleteMember(memberId, modalState.data.id)">
                     削除
                   </button>
                 </div>
