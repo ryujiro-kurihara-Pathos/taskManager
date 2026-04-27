@@ -7,7 +7,7 @@ type ModalType =
 'task-edit' | 
 'task-add' | 
 'project-invite' |
-'member-list' |
+'project-member-list' |
 null;
 
 export interface ModalState {
