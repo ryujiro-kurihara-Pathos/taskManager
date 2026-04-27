@@ -8,6 +8,7 @@ import { ProjectComponent } from './home/projects/projects.component';
 import { ProjectDetailComponent } from './home/projects/project-detail.component';
 import { ProjectListComponent } from './home/projects/project-list.component';
 import { InviteResponseComponent } from './home/projects/invite-response.component';
+import { InboxComponent } from './home/inbox/inbox.component';
 
 export const routes: Routes = [
   { 
@@ -21,12 +22,12 @@ export const routes: Routes = [
             { path: ':projectId', component: ProjectDetailComponent },
           ]
          },
+        { path: 'inbox', component: InboxComponent },
     ],
 },
+  { path: 'invite-response/:inviteId', component: InviteResponseComponent },
   { path: 'signup', component: SignupComponent },
   { path: 'login', component: LoginComponent },
   { path: 'profile', component: ProfileComponent },
   { path: '', redirectTo: 'home', pathMatch: 'full' },
-
-  { path: 'invite-response/:inviteId', component: InviteResponseComponent },
 ];
