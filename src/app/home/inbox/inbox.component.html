@@ -1,0 +1,101 @@
+<div class="inbox-container">
+    <div class="inbox-header">
+        <p class="inbox-header-title">受信トレイ</p>
+        <div class="inbox-tabs">
+            <button class="inbox-tab-btn" type="button"
+            [class.active]="activeTab === 'all'"
+            (click)="activeTab = 'all'"
+            >すべて</button>
+            <button class="inbox-tab-btn" type="button"
+            [class.active]="activeTab === 'unread'"
+            (click)="activeTab = 'unread'"
+            >未読</button>
+            <button class="inbox-tab-btn" type="button"
+            [class.active]="activeTab === 'important'"
+            (click)="activeTab = 'important'"
+            >重要</button>
+        </div>
+    </div>
+    <div class="inbox-list">
+        @if (activeTab === 'all') {
+            @for (notification of notifications; track notification.id) {
+                <button class="inbox-item" type="button">
+                    <div class="inbox-icon"></div>
+                    <p>{{ notification.title }}</p>
+                    <p>{{ notification.message }}</p>
+                    <p>今日</p>
+                </button>
+                <button class="inbox-item" type="button">
+                    <div class="inbox-icon"></div>
+                    <p>テスト</p>
+                </button>
+            }
+            @if (notifications.length === 0) {
+                <p>通知がありません</p>
+            }
+        } @else if (activeTab === 'unread') {
+            <p>未読</p>
+        } @else if (activeTab === 'important') {
+            <p>重要</p>
+        }
+    </div>
+</div>
+
+<style>
+    /* ヘッダー */
+    .inbox-header {
+        padding: 0 20px;
+    }
+    .inbox-header-title {
+        font-size: 20px;
+        font-weight: bold;
+    }
+    .inbox-tabs {
+        display: flex;
+        gap: 20px;
+        border-bottom: 1px solid #a1a39f;
+    }
+    .inbox-tab-btn {
+        min-width: 80px;
+        border: none;
+        background: none;
+        border-radius: 4px 4px 0 0;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        padding: 8px 14px;
+        font-size: 14px;
+    }
+    .inbox-tab-btn:hover {
+        background-color: #ebf1ee;
+    }
+    .inbox-tab-btn.active {
+        background-color: #ebf1ee;
+        border-bottom: 2px solid #1e3112;
+    }
+
+    /* リスト */
+    .inbox-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px 20px;
+    }
+    .inbox-item {
+        width: 100%;
+        border: 2px solid red;
+        border-radius: 12px;
+        padding: 12px 20px;
+        box-sizing: border-box;
+        cursor: pointer;
+        display: grid;
+        grid-template-columns: 56px 1fr 1.5fr auto;
+        align-items: center;
+        background: white;
+    }
+    .inbox-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background-color: #4ea356;
+    }
+</style>
