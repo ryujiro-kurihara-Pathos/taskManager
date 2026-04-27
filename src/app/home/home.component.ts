@@ -16,6 +16,7 @@ import {
   deleteChildrenTask,
   inviteToProject,
   isAdmin,
+  deleteMember,
 } from '../firestore';
 import { TaskComponent } from './tasks/tasks.component';
 import { AuthStateService } from '../services/auth-state.service';
@@ -65,6 +66,7 @@ export class HomeComponent implements OnInit {
 
   closeModal() {
     this.modalService.close();
+    this.inviteEmailOrUserName = '';
   }
 
   // タスク
@@ -310,12 +312,13 @@ export class HomeComponent implements OnInit {
   // プロジェクトへの招待
   async inviteToProject(projectId: string) {
     try {
-      await inviteToProject(
+      const isInvited = await inviteToProject(
         projectId,
         this.inviteEmailOrUserName,
         this.authState.user()?.email ?? '',
         this.authState.uid,
       );
+      if (!isInvited) return;
       this.closeModal();
     } catch (error) {
       console.error("プロジェクトへの招待失敗: ", error);
@@ -328,13 +331,15 @@ export class HomeComponent implements OnInit {
   }
 
   // メンバーを削除
-  async deleteMember(projectId: string) {
+  async deleteMember(memberId: string, projectId: string) {
     try {
       // 管理者でないなら削除できない
       const isAdminUser = await isAdmin(this.authState.uid, projectId);
       if (!isAdminUser) return;
       // メンバーを削除
-      
+      await deleteMember(memberId, projectId);
+      // 表示するメンバーを更新
+      this.modalState.data.memberIds = this.modalState.data.memberIds.filter((id: string) => id !== memberId);
     } catch (error) {
       console.error("メンバー削除失敗: ", error);
     }
