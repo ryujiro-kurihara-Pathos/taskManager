@@ -23,7 +23,7 @@ export class ProjectDetailComponent {
     }
 
     openMemberListModal(project: Project) {
-        this.modalService.open('member-list', project);
+        this.modalService.open('project-member-list', project);
     }
 
     private route = inject(ActivatedRoute);
