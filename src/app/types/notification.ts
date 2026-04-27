@@ -2,8 +2,6 @@ export type NotificationType =
 'project-invite' |
 'task-deadline';
 
-export type SourceType = 'project' | 'task';
-
 export type Notification = {
     id: string; // 通知ドキュメントID
     uid: string; // 通知を受け取るユーザーID
@@ -13,15 +11,17 @@ export type Notification = {
     title: string; // 通知のタイトル
     message: string; // 通知のメッセージ
 
-    sourceType: SourceType; // 通知のソースの種類
-    sourceId: string; // 通知のソースID
+    fromUid?: string; // 通知を送信したユーザー
+    fromName?: string;
 
-    projectInviteId?: string; // プロジェクト招待ID
+    sourceId: string; // 通知のソースID
     
     isRead: boolean; // 通知が既読かどうか
     isImportant: boolean; // 通知が重要かどうか
 
     createdAt: string; // 通知作成日時
+
+    status?: 'pending' | 'accepted' | 'declined' | 'left'; // 招待のステータス
 }
 
-export type AddNotificationInput = Omit<Notification, 'id' | 'createdAt'>;
+export type AddNotificationInput = Omit<Notification, 'id' | 'createdAt' | 'fromName'>;

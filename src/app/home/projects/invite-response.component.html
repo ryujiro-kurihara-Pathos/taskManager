@@ -1,7 +1,7 @@
 <h1>メール承認ページ</h1>
 <p>inviteId: {{ inviteId }}</p>
 
-<button (click)="acceptInvite()">承認</button>
-<button (click)="declineInvite()">辞退</button>
+<button (click)="acceptProjectInvite()">承認</button>
+<button (click)="declineProjectInvite(inviteId ?? '')">辞退</button>
 
 <p>{{ message }}</p>

@@ -8,13 +8,16 @@ export type Task = {
     startDate: string | null;
     memo: string | null;
     parentTaskId: string | null;
-    projectId: string | null;
+
     createdAt: string;
     // updatedAt: string;
     comments: Comment[];
     subTasks: Task[];
     hierarchyTask: Task[];
     originalTitle: string;
+
+    projectId: string | null;
+    teamIds: string[];
 };
 
 export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
@@ -28,6 +31,7 @@ export const initialTask: AddTaskInput = {
     memo: null,
     parentTaskId: null,
     projectId: null,
+    teamIds: [],
 }
 
 export type Comment = {

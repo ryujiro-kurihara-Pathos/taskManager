@@ -9,6 +9,7 @@ import {
     updateDoc,
     deleteDoc,
     arrayRemove,
+    arrayUnion,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { AddTaskInput, Task } from "./types/task";
@@ -283,6 +284,7 @@ export async function getProjects(uid: string) {
                 isArchived: data.isArchived,
                 description: data.description,
                 createdAt: data.createdAt,
+                teamIds: data.teamIds,
             });
         });
 
@@ -391,9 +393,8 @@ export async function inviteToProject(
             type: 'project-invite',
             title: 'プロジェクト招待',
             message: 'プロジェクト招待があります',
-            sourceType: 'project',
-            sourceId: projectId,
-            projectInviteId: projectInviteId,
+            fromUid: invitedByUid,
+            sourceId: projectInviteId,
             isRead: false,
             isImportant: false,
         })
@@ -493,6 +494,69 @@ export async function deleteMember(deletedUid: string, projectId: string) {
     }
 }
 
+// projectInviteを承認に変更
+export async function acceptProjectInvite(inviteId: string, userId: string) {
+    try {
+        const projectInviteRef = doc(db, 'projectInvites', inviteId);
+        // projectInviteのデータを更新する
+        await updateDoc(projectInviteRef, {
+            status: 'accepted',
+        });
+    } catch (error) {
+        throw new Error('招待の承認に失敗しました');
+    }
+}
+
+// 承認したユーザーをプロジェクトメンバーに加える
+export async function addProjectMember(projectId: string, userId: string) {
+    try {
+        const projectRef = doc(db, 'projects', projectId);
+        await updateDoc(projectRef, {
+            memberIds: arrayUnion(userId),
+        });
+    } catch (error) {
+        throw new Error('プロジェクトメンバーの追加に失敗しました');
+    }
+}
+
+// projectInviteIdからprojectIdを取得
+export async function getProjectIdFromProjectInviteId(projectInviteId: string) {
+    try {
+        const projectInviteRef = doc(db, 'projectInvites', projectInviteId);
+        const projectInviteSnap = await getDoc(projectInviteRef);
+        if(!projectInviteSnap.exists()) return null;
+        const projectInviteData = projectInviteSnap.data() as ProjectInvite;
+        return projectInviteData.projectId;
+    } catch (error) {
+        throw error;
+    }
+}
+
+// projectInviteの招待を拒否する
+export async function declineProjectInvite(projectInviteId: string) {
+    try {
+        const projectInviteRef = doc(db, 'projectInvites', projectInviteId);
+        await updateDoc(projectInviteRef, {
+            status: 'declined',
+        });
+    } catch (error) {
+        throw new Error('招待の拒否に失敗しました');
+    }
+}
+
+// projectInviteの招待状況を取得
+export async function getProjectInviteStatus(projectInviteId: string) {
+    try {
+        const projectInviteRef = doc(db, 'projectInvites', projectInviteId);
+        const projectInviteSnap = await getDoc(projectInviteRef);
+        if(!projectInviteSnap.exists()) return null;
+        const projectInviteData = projectInviteSnap.data() as ProjectInvite;
+        return projectInviteData.status;
+    } catch (error) {
+        throw error;
+    }
+}
+
 // 受信トレイ
 // 通知の追加
 export async function addNotification(data: AddNotificationInput) {
@@ -502,9 +566,8 @@ export async function addNotification(data: AddNotificationInput) {
             type: data.type,
             title: data.title,
             message: data.message,
-            sourceType: data.sourceType,
+            fromUid: data.fromUid ?? null,
             sourceId: data.sourceId,
-            projectInviteId: data.projectInviteId ?? null,
             isRead: false,
             isImportant: data.isImportant ?? false,
             createdAt: new Date(),
@@ -529,15 +592,26 @@ export async function getNotifications(uid: string) {
                 type: doc.data()['type'],
                 title: doc.data()['title'],
                 message: doc.data()['message'],
-                sourceType: doc.data()['sourceType'],
+                fromUid: doc.data()['fromUid'] ?? null,
                 sourceId: doc.data()['sourceId'],
-                projectInviteId: doc.data()['projectInviteId'],
                 isRead: doc.data()['isRead'],
                 isImportant: doc.data()['isImportant'],
                 createdAt: doc.data()['createdAt'],
             });
         })
         return notifications;
+    } catch (error) {
+        throw error;
+    }
+}
+
+// 通知を既読にする
+export async function readNotification(notificationId: string) {
+    try {
+        const notificationRef = doc(db, 'notifications', notificationId);
+        await updateDoc(notificationRef, {
+            isRead: true,
+        });
     } catch (error) {
         throw error;
     }

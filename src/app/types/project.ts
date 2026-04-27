@@ -6,7 +6,10 @@ export type Project = {
     visibility: 'private' | 'members';
     isArchived: boolean;
     description: string;
+
     createdAt: string;
+
+    teamIds: string[];
 }
 
 export type AddProjectInput = Omit<Project, 'id' | 'createdAt'>;

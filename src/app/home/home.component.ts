@@ -17,6 +17,11 @@ import {
   inviteToProject,
   isAdmin,
   deleteMember,
+  acceptProjectInvite,
+  addProjectMember,
+  getProjectIdFromProjectInviteId,
+  declineProjectInvite,
+  getProjectInviteStatus,
 } from '../firestore';
 import { TaskComponent } from './tasks/tasks.component';
 import { AuthStateService } from '../services/auth-state.service';
@@ -26,6 +31,7 @@ import { Task, Comment, AddTaskInput, initialTask } from '../types/task';
 import { ModalService, ModalState } from '../services/modal.service';
 import { AddProjectInviteInput, initialProjectInviteInput } from '../types/project';  
 import { logout } from '../auth';
+import { Notification } from '../types/notification';
 
 @Component({
   selector: 'app-home',
@@ -141,12 +147,13 @@ export class HomeComponent implements OnInit {
       await updateTask({
         title: task.title,
         parentTaskId: task.parentTaskId ?? null,
-        projectId: task.projectId ?? null,
         dueDate: task.dueDate ?? null,
         startDate: task.startDate ?? null,
         status: task.status ?? null,
         priority: task.priority ?? null,
         memo: task.memo ?? null,
+        projectId: task.projectId ?? null,
+        teamIds: task.teamIds ?? [],
       }, task.id);
     } catch (error) {
       console.error("タスク更新失敗: ", error);
@@ -191,12 +198,13 @@ export class HomeComponent implements OnInit {
         const addTaskInput: AddTaskInput = {
             title: task.title,
             parentTaskId: type === 'subTask' ? task.parentTaskId ?? null : null,
-            projectId: task.projectId ?? null,
             dueDate: task.dueDate ?? null,
             startDate: task.startDate ?? null,
             status: task.status ?? null,
             priority: task.priority ?? null,
             memo: task.memo ?? null,
+            projectId: task.projectId ?? null,
+            teamIds: task.teamIds ?? [],
         }
         const newTask = await addTask(task.id, addTaskInput);
         return newTask;
@@ -213,26 +221,19 @@ export class HomeComponent implements OnInit {
         await updateTask({
           title: task.title,
           parentTaskId: task.parentTaskId ?? null,
-          projectId: task.projectId ?? null,
           dueDate: task.dueDate ?? null,
           startDate: task.startDate ?? null,
           status: task.status ?? null,
           priority: task.priority ?? null,
           memo: task.memo ?? null,
+          projectId: task.projectId ?? null,
+          teamIds: task.teamIds ?? [],
         }, task.id);
         task.originalTitle = task.title;
       }
     } catch (error) {
       console.error("タスクタイトル更新失敗: ", error);
     }
-  }
-
-  // サブタスクを削除
-  removeSubTask(subTask: any) {
-      // if(subTask.title !== '') return;
-      // this.subTasks = this.subTasks.filter(
-      //     item => item.id !== subTask.id
-      // );
   }
 
   // editingTaskを変更する
@@ -246,25 +247,6 @@ export class HomeComponent implements OnInit {
     } catch (error) {
       console.error("編集中のタスク変更失敗: ", error);
     }
-  }
-
-  // サブタスクをタスクに追加
-  async addSubTaskToTask(subTask: any) {
-      // try {
-      //     const addTaskInput: AddTaskInput = {
-      //         title: subTask.title,
-      //         parentTaskId: this.editingTask?.id ?? null,
-      //         projectId: this.editingTask?.projectId ?? null,
-      //         dueDate: null,
-      //         startDate: null,
-      //         status: '未着手',
-      //         priority: '中',
-      //         memo: null,
-      //     }
-      // await addTask(this.authState.uid, addTaskInput);
-      // } catch (error) {
-      // console.error("サブタスクをタスクに追加失敗: ", error);
-      // }
   }
 
   // // 検索
@@ -342,6 +324,52 @@ export class HomeComponent implements OnInit {
       this.modalState.data.memberIds = this.modalState.data.memberIds.filter((id: string) => id !== memberId);
     } catch (error) {
       console.error("メンバー削除失敗: ", error);
+    }
+  }
+
+  // 通知
+  // 招待を承諾する
+  async acceptInvite(projectInvitedId: string) {
+    try {
+      // 招待への承認がすでにある場合は承認できない
+      const status = await getProjectInviteStatus(projectInvitedId);
+      if (status !== 'pending') return;
+
+      const uid = this.authState.uid;
+      if (!uid) return;
+      const projectId = await getProjectIdFromProjectInviteId(projectInvitedId);
+      if (!projectId) return;
+      await acceptProjectInvite(projectInvitedId, this.authState.uid);
+      await addProjectMember(projectId, this.authState.uid);
+      this.closeModal();
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // 招待を拒否する
+  async declineInvite(projectInvitedId: string) {
+    try {
+      const status = await getProjectInviteStatus(projectInvitedId);
+      if (status !== 'pending') return;
+
+      const uid = this.authState.uid;
+      if (!uid) return;
+      
+      await declineProjectInvite(projectInvitedId);
+      this.closeModal();
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // 招待状況を取得する
+  async getInviteStatus(projectInviteId: string) {
+    try {
+      const status = await getProjectInviteStatus(projectInviteId);
+      return status;
+    } catch (error) {
+      throw error;
     }
   }
 }

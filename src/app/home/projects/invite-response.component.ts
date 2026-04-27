@@ -1,9 +1,14 @@
 import { Component, inject } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
-import { arrayUnion, doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { ProjectInvite } from "../../types/project";
 import { AuthStateService } from "../../services/auth-state.service";
+import {
+    acceptProjectInvite,
+    addProjectMember,
+    declineProjectInvite,
+} from '../../firestore';
 
 
 @Component({
@@ -59,7 +64,7 @@ export class InviteResponseComponent {
         };
     }
     // 招待を承認
-    async acceptInvite() {
+    async acceptProjectInvite() {
         if(!this.invite) return;
         if(this.invite.status !== 'pending') return;
 
@@ -71,56 +76,17 @@ export class InviteResponseComponent {
         }
 
         try {
-            await this.acceptProjectInvite(this.invite.id, currentUser.id);
-            await this.addProjectMember(this.invite.projectId, currentUser.id);
+            await acceptProjectInvite(this.invite.id, currentUser.id);
+            await addProjectMember(this.invite.projectId, currentUser.id);
             this.message = '招待を承認しました';
         } catch (error) {
             this.message = error instanceof Error ? error.message : '招待の承認に失敗しました';
         }
     }
-    // projectInviteを承認に変更
-    async acceptProjectInvite(inviteId: string, userId: string) {
-        try {
-            const projectInviteRef = doc(db, 'projectInvites', inviteId);
-            // projectInviteのデータを更新する
-            await updateDoc(projectInviteRef, {
-                status: 'accepted',
-            });
-        } catch (error) {
-            throw new Error('招待の承認に失敗しました');
-        }
-    }
-
-    // 承認したユーザーをプロジェクトメンバーに加える
-    async addProjectMember(projectId: string, userId: string) {
-        try {
-            const projectRef = doc(db, 'projects', projectId);
-            await updateDoc(projectRef, {
-                memberIds: arrayUnion(userId),
-            });
-        } catch (error) {
-            throw new Error('プロジェクトメンバーの追加に失敗しました');
-        }
-    }
-    // 招退を辞退
-    async declineInvite() {
-        if(!this.invite) return;
-        if(this.invite.status !== 'pending') return;
-
-        try {
-            await this.declineProjectInvite(this.invite.id);
-        } catch (error) {
-            this.message = error instanceof Error ? error.message : '招待の辞退に失敗しました';
-        }
-        this.message = '招待を辞退しました';
-    }
     // 招待を辞退に変更
     async declineProjectInvite(inviteId: string) {
         try {
-            const projectInviteRef = doc(db, 'projectInvites', inviteId);
-            await updateDoc(projectInviteRef, {
-                status: 'declined',
-            });
+            await declineProjectInvite(inviteId);
         } catch (error) {
             throw new Error('招待の辞退に失敗しました');
         }

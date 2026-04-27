@@ -18,25 +18,45 @@
     </div>
     <div class="inbox-list">
         @if (activeTab === 'all') {
+            @if (notifications.length === 0) {
+                <p>通知がありません</p>
+            }
             @for (notification of notifications; track notification.id) {
-                <button class="inbox-item" type="button">
+                <button class="inbox-item"
+                [class.isRead]="notification.isRead"
+                 type="button" (click)="openDetailModal(notification)">
                     <div class="inbox-icon"></div>
                     <p>{{ notification.title }}</p>
                     <p>{{ notification.message }}</p>
                     <p>今日</p>
                 </button>
-                <button class="inbox-item" type="button">
+            }
+            <button class="inbox-item" type="button">
+                <div class="inbox-icon"></div>
+                <p>テスト</p>
+            </button>
+        } @else if (activeTab === 'unread') {
+            @for (notification of getUnreadNotifications(); track notification.id) {
+                <button class="inbox-item"
+                [class.isRead]="notification.isRead"
+                 type="button" (click)="openDetailModal(notification)">
                     <div class="inbox-icon"></div>
-                    <p>テスト</p>
+                    <p>{{ notification.title }}</p>
+                    <p>{{ notification.message }}</p>
+                    <p>今日</p>
                 </button>
             }
-            @if (notifications.length === 0) {
-                <p>通知がありません</p>
-            }
-        } @else if (activeTab === 'unread') {
-            <p>未読</p>
         } @else if (activeTab === 'important') {
-            <p>重要</p>
+            @for (notification of getImportantNotifications(); track notification.id) {
+                <button class="inbox-item"
+                [class.isRead]="notification.isRead"
+                 type="button" (click)="openDetailModal(notification)">
+                    <div class="inbox-icon"></div>
+                    <p>{{ notification.title }}</p>
+                    <p>{{ notification.message }}</p>
+                    <p>今日</p>
+                </button>
+            }
         }
     </div>
 </div>
@@ -82,15 +102,19 @@
     }
     .inbox-item {
         width: 100%;
-        border: 2px solid red;
-        border-radius: 12px;
         padding: 12px 20px;
         box-sizing: border-box;
         cursor: pointer;
         display: grid;
         grid-template-columns: 56px 1fr 1.5fr auto;
         align-items: center;
-        background: white;
+        background-color: rgb(235, 209, 201);
+        border: 2px solid rgb(233, 121, 113);
+        border-radius: 12px;
+    }
+    .inbox-item.isRead {
+        background-color: white;
+        border: 2px solid rgb(129, 122, 196);
     }
     .inbox-icon {
         width: 44px;
