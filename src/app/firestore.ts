@@ -15,6 +15,7 @@ import { db } from "./firebase";
 import { AddTaskInput, Task } from "./types/task";
 import { Project, AddProjectInput, ProjectInvite } from "./types/project";
 import { Notification, AddNotificationInput } from "./types/notification";
+import { AddTeamInput, AddTeamMemberInput, Team, TeamMember } from "./types/team";
 
 // フィールドの追加
 export async function addField(taskID: string, fieldName: string, fieldValue: any) {
@@ -29,27 +30,30 @@ export async function addField(taskID: string, fieldName: string, fieldValue: an
 
 //タスク
 // タスクを追加
-export async function addTask(
-    uid: string,
-    data: AddTaskInput
-) {
+export async function addTask(addTaskInput: AddTaskInput) {
     try {
-        if(data.startDate && data.dueDate && new Date(data.startDate) > new Date(data.dueDate)) return null;
-        const docRef = await addDoc(collection(db, 'tasks'), {
-            uid: uid,
-            ...data,
-            createdAt: new Date(),
-        } as AddTaskInput);
+        const createdAt = new Date();
+        const taskDoc = await addDoc(collection(db, 'tasks'), {
+            ...addTaskInput,
+            createdAt: createdAt,
+        });
         const task = {
-            id: uid,
-            ...data,
-            createdAt: new Date().toISOString(),
+            id: taskDoc.id,
+            ...addTaskInput,
+            createdAt: createdAt.toISOString(),
+            comments: [],
+            subTasks: [],
+            hierarchyTask: [],
+            originalTitle: addTaskInput.title,
+            projectId: addTaskInput.projectId ?? null,
+            teamId: addTaskInput.teamId ?? null,
         } as Task;
         return task;
     } catch (error) {
-        return null;
+        throw error;
     }
 }
+
 // メインタスクを取得
 export async function getMainTasks(uid: string) {
     try {
@@ -106,7 +110,7 @@ export async function getAllTasks() {
     }
 }
 // タスクを更新
-export async function updateTask(inputTask: AddTaskInput, taskId: string) {
+export async function updateTask(taskId: string, inputTask: AddTaskInput) {
     try {
         const taskRef = doc(db, 'tasks', taskId);
 
@@ -612,6 +616,90 @@ export async function readNotification(notificationId: string) {
         await updateDoc(notificationRef, {
             isRead: true,
         });
+    } catch (error) {
+        throw error;
+    }
+}
+
+// チーム
+// チームの追加
+export async function addTeam(addTeamInput: AddTeamInput) {
+    try {
+        // チームをドキュメントに追加
+        const createdAt = new Date();
+        const teamDoc = await addDoc(collection(db, 'team'), {
+            ...addTeamInput,
+            createdAt: new Date(),
+        });
+        // チームドキュメントのデータを取得
+        const team = {
+            id: teamDoc.id,
+            ...addTeamInput,
+            createdAt: createdAt.toISOString(),
+        } as Team;
+        return team;
+    } catch (error) {
+        throw error;
+    }
+}
+export async function addTeamMember(addTeamMemberInput: AddTeamMemberInput) {
+    try {
+        const createdAt = new Date();
+        const teamMemberDoc = await addDoc(collection(db, 'teamMembers'), {
+            ...addTeamMemberInput,
+            createdAt: createdAt,
+        });
+        const teamMember = {
+            id: teamMemberDoc.id,
+            ...addTeamMemberInput,
+            createdAt: createdAt,
+        };
+        return teamMember;
+    } catch (error) {
+        throw error;
+    }
+}
+
+// ユーザーIDが所属しているチームIDを取得
+export async function getTeamMembersByUserId(uid: string) {
+    try {
+        const teamMemberRef = collection(db, 'teamMembers');
+        const q = query(teamMemberRef, where('userId', '==', uid));
+        const snapshot = await getDocs(q);
+        const teamMemberIds: string[] = [];
+        snapshot.forEach((doc) => {
+            teamMemberIds.push(doc.data()['teamId']);
+        });
+        return teamMemberIds;
+    } catch (error) {
+        throw error;
+    }
+}
+
+// チームIDからチームを取得
+export async function getTeamById(teamId: string) {
+    try {
+        const teamRef = doc(db, 'team', teamId);
+        const snapshot = await getDoc(teamRef);
+        if(!snapshot.exists()) return null;
+        const team = {
+            id: snapshot.id,
+            ...snapshot.data(),
+        } as Team;
+        return team;
+    } catch (error) {
+        throw error;
+    }
+}
+export async function getTeamsByIds(teamIds: string[]) {
+    try {
+        const teams: Team[] = [];
+        for (const teamId of teamIds) {
+            const team = await getTeamById(teamId);
+            if(!team) continue;
+            teams.push(team);
+        }
+        return teams;
     } catch (error) {
         throw error;
     }

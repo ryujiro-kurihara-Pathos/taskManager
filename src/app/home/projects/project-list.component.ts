@@ -48,6 +48,7 @@ export class ProjectListComponent {
                 visibility: 'private',
                 isArchived: false,
                 description: '',
+                teamIds: [],
             });
             this.addProjectToPage(project);
             this.closeProjectAddModal();

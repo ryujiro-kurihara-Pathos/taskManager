@@ -2,7 +2,6 @@ import { Component, inject, OnInit } from '@angular/core';
 import { TasksService } from '../../services/tasks.service';
 import { CommonModule } from '@angular/common';
 import { ModalService } from '../../services/modal.service';
-import { getComments } from '../../firestore';
 import { FilterKey, SortKey } from '../../types/task';
 
 @Component({

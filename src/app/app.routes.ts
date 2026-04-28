@@ -9,6 +9,7 @@ import { ProjectDetailComponent } from './home/projects/project-detail.component
 import { ProjectListComponent } from './home/projects/project-list.component';
 import { InviteResponseComponent } from './home/projects/invite-response.component';
 import { InboxComponent } from './home/inbox/inbox.component';
+import { TeamComponent } from './home/teams/team.component';
 
 export const routes: Routes = [
   { 
@@ -23,6 +24,7 @@ export const routes: Routes = [
           ]
          },
         { path: 'inbox', component: InboxComponent },
+        { path: 'teams', component: TeamComponent },
     ],
 },
   { path: 'invite-response/:inviteId', component: InviteResponseComponent },

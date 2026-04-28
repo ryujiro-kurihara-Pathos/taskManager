@@ -1,0 +1,15 @@
+<h1>チーム</h1>
+
+<input type="text"
+    [(ngModel)]="addingTeam.name"
+    placeholder="チーム名を入力してください"
+>
+
+<button (click)=addTeams()>チームを追加</button>
+
+@for (team of teams; track team.id) {
+    <p>{{ team.name }}</p>
+}
+@if (teams.length === 0) {
+    <p>チームがありません</p>
+}

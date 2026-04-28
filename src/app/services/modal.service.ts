@@ -49,6 +49,7 @@ export class ModalService {
         });
     }
 
+
     // タスク編集の場合に実行すること
     async getTaskEditData(task: any) {
         try {

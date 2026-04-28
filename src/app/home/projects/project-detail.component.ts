@@ -85,6 +85,7 @@ export class ProjectDetailComponent {
             const user = this.authStateService.user();
             if(!user) return;
             const task: AddTaskInput = {
+                uid: user.id,
                 title: title,
                 status: '未着手',
                 priority: '中',
@@ -93,8 +94,9 @@ export class ProjectDetailComponent {
                 memo: null,
                 parentTaskId: null,
                 projectId: this.projectId,
+                teamId: null,
             }
-            const newTask = await addTask(user.id, task);
+            const newTask = await addTask(task);
             if (!newTask) return;
             this.tasks.push(newTask);
             this.closeTaskAddModal();

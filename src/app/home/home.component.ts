@@ -64,23 +64,21 @@ export class HomeComponent implements OnInit {
     });
   }
 
-  ngOnInit() {
-    this.modalService.modalState$.subscribe((state) => {
-      this.modalState = state;
-    });
-  }
-
-  closeModal() {
-    this.modalService.close();
-    this.inviteEmailOrUserName = '';
-  }
-
   // タスク
   isSidebarOpen: boolean = true;
   sidebarTabs: 'tasks' | 'projects' | 'teams' = 'tasks';
   addingTask: AddTaskInput = { ...initialTask };
   addingSubTask: Task | null = null;
   commentContent: string = '';
+  editingTask: Task = { 
+    id: '',
+    ...initialTask,
+    createdAt: '',
+    comments: [],
+    subTasks: [],
+    hierarchyTask: [],
+    originalTitle: '',
+  };
 
   // プロジェクト
   projectInviteInput: AddProjectInviteInput = initialProjectInviteInput;
@@ -90,6 +88,25 @@ export class HomeComponent implements OnInit {
   searchedTasks: Task[] = [];
 
   @ViewChildren('subTaskInput') subTaskInputs!: QueryList<ElementRef<HTMLInputElement>>;
+
+  ngOnInit() {
+    this.modalService.modalState$.subscribe((state) => {
+      this.modalState = state;
+
+      if (state.isOpen && state.type === 'task-edit') {
+        const task = state.data as Task;
+
+        // this.currentTask = task;
+
+        this.editingTask = { ...task };
+      }
+    });
+  }
+
+  closeModal() {
+    this.modalService.close();
+    this.inviteEmailOrUserName = '';
+  }
 
   // フィールドを追加
   async addField(fieldName: string, fieldValue: any) {
@@ -122,7 +139,10 @@ export class HomeComponent implements OnInit {
   // タスク追加
   async addTask() {
     try {
-      const newTask = await addTask(this.authState.uid, this.addingTask);
+      const uid = this.authState.uid;
+      if(!uid) return;
+      this.addingTask.uid = uid;
+      const newTask = await addTask(this.addingTask);
       this.tasksService.addTask(newTask as Task);
       this.closeModal();
       this.addingTask = { ...initialTask };
@@ -141,20 +161,21 @@ export class HomeComponent implements OnInit {
     }
   }
 
+  // タスク編集モーダルで保存ボタンを押したときの処理
+  async onSaveTaskEdit(task: Task) {
+    try {
+      await this.updateTask(task);
+      this.closeModal();
+    } catch (error) {
+      console.error("タスク編集保存失敗: ", error);
+    }
+  }
+
   // タスクの更新
   async updateTask(task: Task) {
     try {
-      await updateTask({
-        title: task.title,
-        parentTaskId: task.parentTaskId ?? null,
-        dueDate: task.dueDate ?? null,
-        startDate: task.startDate ?? null,
-        status: task.status ?? null,
-        priority: task.priority ?? null,
-        memo: task.memo ?? null,
-        projectId: task.projectId ?? null,
-        teamIds: task.teamIds ?? [],
-      }, task.id);
+      await updateTask(task.id, {...task } as AddTaskInput);
+      this.tasksService.updateTask(task);
     } catch (error) {
       console.error("タスク更新失敗: ", error);
     }
@@ -196,6 +217,7 @@ export class HomeComponent implements OnInit {
   async addTaskToFirestore(task: Task, type: 'subTask' | 'mainTask') {
     try {
         const addTaskInput: AddTaskInput = {
+            uid: this.authState.uid,
             title: task.title,
             parentTaskId: type === 'subTask' ? task.parentTaskId ?? null : null,
             dueDate: task.dueDate ?? null,
@@ -204,31 +226,24 @@ export class HomeComponent implements OnInit {
             priority: task.priority ?? null,
             memo: task.memo ?? null,
             projectId: task.projectId ?? null,
-            teamIds: task.teamIds ?? [],
+            teamId: task.teamId ?? null,
         }
-        const newTask = await addTask(task.id, addTaskInput);
+        const newTask = await addTask(addTaskInput);
         return newTask;
     } catch (error) {
         return null;
     }
   }
-    // サブタスクの更新
+  // サブタスクの更新
   async updateTitle(task: Task) {
     try {
       if(task.title.trim() === '') {
         task.title = task.originalTitle;
       } else {
-        await updateTask({
-          title: task.title,
-          parentTaskId: task.parentTaskId ?? null,
-          dueDate: task.dueDate ?? null,
-          startDate: task.startDate ?? null,
-          status: task.status ?? null,
-          priority: task.priority ?? null,
-          memo: task.memo ?? null,
-          projectId: task.projectId ?? null,
-          teamIds: task.teamIds ?? [],
-        }, task.id);
+        await updateTask(
+          task.id, {
+          ...task as AddTaskInput,
+        });
         task.originalTitle = task.title;
       }
     } catch (error) {

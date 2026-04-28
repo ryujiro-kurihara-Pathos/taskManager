@@ -1,9 +1,10 @@
 // タスク
 export type Task = {
     id: string;
+    uid: string;
     title: string;
-    status: '未着手' | '進行中' | '保留' | '完了';
-    priority: '高' | '中' | '低';
+    status: '未着手' | '進行中' | '保留' | '完了' | null;
+    priority: '高' | '中' | '低' | null;
     dueDate: string | null;
     startDate: string | null;
     memo: string | null;
@@ -17,21 +18,23 @@ export type Task = {
     originalTitle: string;
 
     projectId: string | null;
-    teamIds: string[];
+    teamId: string | null;
 };
 
 export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
 
 export const initialTask: AddTaskInput = {
+    uid: '',
     title: '',
-    status: '未着手',
-    priority: '中',
+    status: null,
+    priority: null,
     dueDate: null,
     startDate: null,
     memo: null,
     parentTaskId: null,
+
     projectId: null,
-    teamIds: [],
+    teamId: null,
 }
 
 export type Comment = {

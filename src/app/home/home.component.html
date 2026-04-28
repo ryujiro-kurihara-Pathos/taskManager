@@ -34,9 +34,9 @@
           <a class="sidebar-menu-btn" 
           routerLink="/home/inbox" routerLinkActive="active">受信トレイ</a>
           <a class="sidebar-menu-btn" 
-          routerLink="/home/goals" routerLinkActive="active">ゴール</a>
-          <a class="sidebar-menu-btn" 
           routerLink="/home/teams" routerLinkActive="active">チーム</a>
+          <a class="sidebar-menu-btn" 
+          routerLink="/home/goals" routerLinkActive="active">ゴール</a>
           <a class="sidebar-menu-btn" 
           routerLink="/home/search" routerLinkActive="active">検索</a>
           <button class="sidebar-menu-btn" type="button" (click)="addField('projectId', null)">ドキュメント追加</button>
@@ -139,34 +139,28 @@
                 </button>
               }
             </div>
-            <input
-              type="text"
-              class="edit-task-name-input"
-              [(ngModel)]="modalState.data.title"
-              (blur)="updateTitle(modalState.data)"
-            />
+            <input type="text"
+            class="edit-task-name-input"
+            [(ngModel)]="editingTask.title"
+            >
             <div class="edit-task-item edit-task-start-date">
               <p class="edit-label">開始日</p>
-              <input
-                type="date"
-                class="edit-task-start-date-input"
-                [(ngModel)]="modalState.data.startDate"
-              />
+              <input type="date"
+               class="edit-task-start-date-input"
+               [(ngModel)]="editingTask.startDate"
+               >
             </div>
             <div class="edit-task-item edit-task-due-date">
               <p class="edit-label">期日</p>
-              <input
-                type="date"
-                class="edit-task-due-date-input"
-                [(ngModel)]="modalState.data.dueDate"
-              />
+              <input type="date"
+              class="edit-task-due-date-input"
+              [(ngModel)]="editingTask.dueDate"
+              >
             </div>
             <div class="edit-task-item edit-task-status">
               <p class="edit-label">ステータス</p>
-              <select
-                id="status-select"
-                [(ngModel)]="modalState.data.status"
-                name="status"
+              <select name="status" id="status-select"
+              [(ngModel)]="editingTask.status"
               >
                 <option value="未着手">未着手</option>
                 <option value="進行中">進行中</option>
@@ -176,10 +170,8 @@
             </div>
             <div class="edit-task-item edit-task-priority">
               <p class="edit-label">優先度</p>
-              <select
-                id="priority-select"
-                [(ngModel)]="modalState.data.priority"
-                name="priority"
+              <select name="priority" id="priority-select"
+              [(ngModel)]="editingTask.priority"
               >
                 <option value="">未入力</option>
                 <option value="高">高</option>
@@ -192,9 +184,9 @@
               <input
                 type="text"
                 class="edit-task-memo-input"
-                [(ngModel)]="modalState.data.memo"
+                [(ngModel)]="editingTask.memo"
                 placeholder="メモを入力してください"
-              />
+              >
             </div>
             <div class="edit-task-item edit-task-subtasks-container">
               <p class="edit-label">サブタスク</p>
@@ -237,6 +229,7 @@
               </div>
             </div>
           </div>
+          <button class="edit-task-save-btn" type="button" (click)="onSaveTaskEdit(editingTask)">保存</button>
           <button class="edit-task-delete-btn" type="button" (click)="deleteTask(modalState.data.id)">削除</button>
         </div>
       </div>

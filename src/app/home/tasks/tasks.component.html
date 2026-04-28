@@ -1,4 +1,8 @@
 <div class="tasks-container">
+  <div class="tasks-header">
+    <p class="tasks-header-title">タスク</p>
+  </div>
+  
   <div class="display-switch-container">
     <button
       class="display-switch-btn"
@@ -25,7 +29,6 @@
       カレンダー
     </button>
   </div>
-    <!-- <button class="add-task-btn" type="button" (click)="tasksService.openAddTaskModal()">+ タスクを追加</button> -->
     <button class="add-task-btn" type="button" (click)="openTaskModal('task-add', null)">+ タスクを追加</button>
     <div class="menu-wrapper">
       <button class="toolbar-btn" type="button" 
