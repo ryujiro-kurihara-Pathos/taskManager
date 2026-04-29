@@ -4,6 +4,7 @@ import { addProject, getProjects } from '../../firestore';
 import { FormsModule } from '@angular/forms';
 import { Project } from '../../types/project';
 import { RouterLink } from '@angular/router';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
     selector: 'app-project-list',
@@ -14,6 +15,7 @@ import { RouterLink } from '@angular/router';
 
 export class ProjectListComponent {
     authState = inject(AuthStateService);
+    authService = inject(AuthService);
 
     projects: Project[] = [];
 
@@ -24,7 +26,13 @@ export class ProjectListComponent {
     newProjectName = '';
 
     ngOnInit() {
-        this.getProjects();
+        this.authService.watchAuthState(async(user) => {
+            if(!user) {
+                this.projects = [];
+                return;
+            }
+            this.projects = await this.getProjects(user.uid);
+        })
     }
 
     openProjectAddModal() {
@@ -64,12 +72,13 @@ export class ProjectListComponent {
     }
 
     // プロジェクトを取得
-    async getProjects() {
+    async getProjects(uid: string) {
         try {
-            const projects = await getProjects(this.authState.uid);
-            this.projects = projects;
+            const projects = await getProjects(uid);
+            return projects;
         } catch (error) {
             console.error('プロジェクト取得に失敗しました', error);
+            return [];
         }
     }
 }

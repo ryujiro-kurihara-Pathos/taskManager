@@ -608,6 +608,22 @@ export async function getNotifications(uid: string) {
         throw error;
     }
 }
+// 通知がされているかどうか
+export async function existsNotification(sourceId: string, recieverUid: string) {
+    try {
+        const notificationRef = collection(db, 'notifications');
+        const q = query(notificationRef, 
+            where('sourceId', '==', sourceId),
+            where('uid', '==', recieverUid),
+        );
+        const snapshot = await getDocs(q);
+        if(snapshot.empty) return false;
+        return true;
+    } catch (error) {
+        console.error('通知がされているかどうかの判定失敗: ', error);
+        return false;
+    }
+}
 
 // 通知を既読にする
 export async function readNotification(notificationId: string) {

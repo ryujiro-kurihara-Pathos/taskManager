@@ -94,6 +94,7 @@ export class ProjectDetailComponent {
                 memo: null,
                 parentTaskId: null,
                 projectId: this.projectId,
+                assignedUid: null,
                 teamId: null,
             }
             const newTask = await addTask(task);

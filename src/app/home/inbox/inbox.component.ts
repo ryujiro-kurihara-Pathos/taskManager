@@ -10,6 +10,7 @@ import {
 import { AuthStateService } from '../../services/auth-state.service';
 import { Notification } from '../../types/notification';
 import { ModalService } from '../../services/modal.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
     selector: 'app-inbox',
@@ -19,6 +20,7 @@ import { ModalService } from '../../services/modal.service';
 
 export class InboxComponent {
     authState = inject(AuthStateService);
+    authService = inject(AuthService);
     modalService = inject(ModalService);
     // 通知：招待一覧
     notifications: Notification[] = [];
@@ -26,7 +28,13 @@ export class InboxComponent {
     activeTab: 'all' | 'unread' | 'important' = 'all';
 
     async ngOnInit() {
-        this.notifications = await getNotifications(this.authState.uid);
+        this.authService.watchAuthState(async(user) => {
+            if(!user) {
+                this.notifications = [];
+                return;
+            }
+            this.notifications = await this.getNotifications();
+        })
     }
 
     // 詳細モーダルを開く
@@ -41,11 +49,11 @@ export class InboxComponent {
         });
 
         // 通知を既読にする
-        this.notifications = this.notifications.map((notification) => {
-                if (notification.id === notification.id) {
-                    return { ...notification, isRead: true };
+        this.notifications = this.notifications.map((item) => {
+                if (item.id === notification.id) {
+                    return { ...item, isRead: true };
                 }
-                return notification;
+                return item;
             }
         )
     }
@@ -65,6 +73,19 @@ export class InboxComponent {
             await addProjectMember(projectId, currentUser.id);
         } catch (error) {
             throw error;
+        }
+    }
+
+    // 通知を取得
+    async getNotifications() {
+        try {
+            const uid = this.authState.uid;
+            if(!uid) return [];
+            const notifications = await getNotifications(uid);
+            return notifications;
+        } catch (error) {
+            console.error('通知取得失敗: ', error);
+            return [];
         }
     }
 

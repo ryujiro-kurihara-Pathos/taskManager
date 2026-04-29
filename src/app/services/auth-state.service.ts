@@ -6,7 +6,7 @@ import { User } from '../types/user';
     providedIn: 'root'
 })
 export class AuthStateService {
-    user = signal<User | null>(null);
+    user = signal<User | null | undefined>(undefined);
 
     setUser(user: User | null) {
         this.user.set(user);

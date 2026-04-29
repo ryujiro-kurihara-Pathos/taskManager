@@ -1,4 +1,4 @@
-import { Component, ViewChildren, QueryList, ElementRef, inject, effect, OnInit } from '@angular/core';
+import { Component, ViewChildren, QueryList, ElementRef, inject, OnInit } from '@angular/core';
 import { RouterLink, RouterLinkActive, Router, RouterOutlet } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
@@ -23,7 +23,6 @@ import {
   declineProjectInvite,
   getProjectInviteStatus,
 } from '../firestore';
-import { TaskComponent } from './tasks/tasks.component';
 import { AuthStateService } from '../services/auth-state.service';
 import { TasksService } from '../services/tasks.service';
 import { AuthService } from '../services/auth.service';
@@ -31,11 +30,10 @@ import { Task, Comment, AddTaskInput, initialTask } from '../types/task';
 import { ModalService, ModalState } from '../services/modal.service';
 import { AddProjectInviteInput, initialProjectInviteInput } from '../types/project';  
 import { logout } from '../auth';
-import { Notification } from '../types/notification';
 
 @Component({
   selector: 'app-home',
-  imports: [ RouterLink, RouterLinkActive, RouterOutlet, FormsModule, CommonModule, TaskComponent ],
+  imports: [ RouterLink, RouterLinkActive, RouterOutlet, FormsModule, CommonModule ],
   templateUrl: './home.component.html',
 })
 
@@ -43,26 +41,14 @@ export class HomeComponent implements OnInit {
   authState = inject(AuthStateService);
   authService = inject(AuthService);
   tasksService = inject(TasksService);
+  modalService = inject(ModalService);
+  router = inject(Router);
 
   modalState: ModalState = {
     isOpen: false,
     type: null,
     data: null,
   };
-
-  constructor(
-    private router: Router,
-    private modalService: ModalService
-  ) {
-    effect(() => {
-      const user = this.authState.user();
-      if(user) {
-        this.tasksService.loadMainTasks();
-      } else {
-        this.tasksService.clearTasks();
-      }
-    });
-  }
 
   // タスク
   isSidebarOpen: boolean = true;
@@ -227,6 +213,7 @@ export class HomeComponent implements OnInit {
             memo: task.memo ?? null,
             projectId: task.projectId ?? null,
             teamId: task.teamId ?? null,
+            assignedUid: task.assignedUid ?? null,
         }
         const newTask = await addTask(addTaskInput);
         return newTask;
@@ -361,7 +348,6 @@ export class HomeComponent implements OnInit {
       throw error;
     }
   }
-
   // 招待を拒否する
   async declineInvite(projectInvitedId: string) {
     try {
@@ -377,7 +363,6 @@ export class HomeComponent implements OnInit {
       throw error;
     }
   }
-
   // 招待状況を取得する
   async getInviteStatus(projectInviteId: string) {
     try {
@@ -385,6 +370,20 @@ export class HomeComponent implements OnInit {
       return status;
     } catch (error) {
       throw error;
+    }
+  }
+  // 受信トレイからタスクへ移動
+  async openTaskFromNotification() {
+    try {
+      const task = await getTask(this.modalState.data.sourceId);
+      if(!task) return;
+
+      this.closeModal();
+
+      this.router.navigate(['/home/tasks']);
+      this.modalService.open('task-edit', task);
+    } catch (error) {
+      console.error("受信トレイからタスクへ移動失敗: ", error);
     }
   }
 }

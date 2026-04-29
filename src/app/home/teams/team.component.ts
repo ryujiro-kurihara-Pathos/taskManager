@@ -9,6 +9,7 @@ import {
 import { AuthStateService } from '../../services/auth-state.service';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
     selector: 'app-teams',
@@ -19,15 +20,20 @@ import { CommonModule } from '@angular/common';
 
 export class TeamComponent {
     authState = inject(AuthStateService);
+    authService = inject(AuthService);
 
     // 追加するチーム
     addingTeam: AddTeamInput = { ...initialTeamInput };
     teams: Team[] = [];
 
     async ngOnInit() {
-        const uid = this.authState.uid;
-        console.log("uid: ", uid);
-        this.teams = await this.getUserTeams(uid);
+        this.authService.watchAuthState(async(user) => {
+            if(!user) {
+                this.teams = [];
+                return;
+            }
+            this.teams = await this.getUserTeams(user.uid);
+        })
     }
 
     // チームを追加

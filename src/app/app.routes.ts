@@ -26,7 +26,7 @@ export const routes: Routes = [
         { path: 'inbox', component: InboxComponent },
         { path: 'teams', component: TeamComponent },
     ],
-},
+  },
   { path: 'invite-response/:inviteId', component: InviteResponseComponent },
   { path: 'signup', component: SignupComponent },
   { path: 'login', component: LoginComponent },

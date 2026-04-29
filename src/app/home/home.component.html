@@ -63,7 +63,7 @@
             <p class="add-task-title">タスクを追加</p>
             <button class="add-task-close-btn" type="button" (click)="closeModal()">×</button>
           </div>
-          <div class="add-task-content">
+          <div class="add-task-body">
             <div class="add-task-item">
               <p class="add-label">タスク名</p>
               <input
@@ -131,7 +131,7 @@
             <p class="edit-task-title">タスクを編集</p>
             <button class="edit-task-close-btn" type="button" (click)="closeModal()">×</button>
           </div>
-          <div class="modal-content edit-task-content">
+          <div class="modal-body edit-task-body">
             <div class="edit-task-hierarchy-container">
               @for (task of modalState.data.hierarchyTask; track task.id) {
                 <button class="edit-task-hierarchy-btn" type="button" (click)="changeEditingTask(task)">
@@ -240,7 +240,7 @@
             <p>{{ modalState.data.name }} への招待</p>
             <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
           </div>
-          <div class="modal-content">
+          <div class="modal-body">
             <div class="modal-content-item">
               <p class="modal-content-label">メールで招待</p>
               <div class="modal-content-email-input-container">
@@ -258,7 +258,7 @@
             <p>{{ modalState.data.name }}のメンバー</p>
             <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
           </div>
-          <div class="modal-content">
+          <div class="modal-body">
             <div class="modal-project-member-list">
               @for (memberId of modalState.data.memberIds; track memberId) {
                 <div class="modal-project-member">
@@ -281,7 +281,7 @@
             <p>受信トレイ詳細</p>
             <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
           </div>
-          <div class="modal-content">
+          <div class="modal-body">
             <div class="modal-notification-title-wrapper">
               <div class="modal-notification-title-icon"></div>
               <div class="modal-notification-text-wrapper">
@@ -290,7 +290,7 @@
               </div>
             </div>
             <p>通知内容</p>
-            <div class="modal-notification-content-wrapper">
+            <div class="modal-notification-body-wrapper">
               <p>{{ authState.userName }}から{{ modalState.data.message }}</p>
               @if (modalState.data.type === 'project-invite') {
                 @if (modalState.data.status === 'pending') {
@@ -305,6 +305,13 @@
                 }
               }
             </div>
+          </div>
+          <div class="modal-footer">
+            @if (modalState.data.type === 'task-deadline') {
+              <button class="modal-footer-btn" (click)="openTaskFromNotification()">
+                タスクに移動
+              </button>
+            }
           </div>
         </div>
       </div>
@@ -471,6 +478,7 @@
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
+    overflow-y: auto;
     gap: 20px;
   }
   .main-container > .add-task-btn {
@@ -492,6 +500,7 @@
     justify-content: center;
     background-color: rgba(0, 0, 0, 0.5);
     z-index: 200;
+    overflow: hidden;
   }
   .modal-form {
     display: flex;
@@ -510,10 +519,22 @@
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid #e0e0e0;
+    flex-shrink: 0;
   }
-  .modal-content {
+  .modal-body {
     padding: 10px 10px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
   }
+  .modal-footer {
+  flex-shrink: 0;
+  padding: 20px 20px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
   /* タスク */
   .add-task-btn {
@@ -655,5 +676,16 @@
   }
   .modal-notification-text-wrapper p {
     margin: 0;
+  }
+  .modal-footer-btn {
+    padding: 8px 15px;
+    font-size: 16px;
+    border-radius: 4px;
+    border: none;
+    background-color: rgb(26, 165, 61);
+    color: white;
+  }
+  .modal-footer-btn:hover {
+    background-color: rgb(20, 117, 44);
   }
 </style>

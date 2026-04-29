@@ -1,8 +1,10 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, effect } from '@angular/core';
 import { TasksService } from '../../services/tasks.service';
 import { CommonModule } from '@angular/common';
 import { ModalService } from '../../services/modal.service';
 import { FilterKey, SortKey } from '../../types/task';
+import { AuthStateService } from '../../services/auth-state.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
     selector: 'app-tasks',
@@ -12,13 +14,10 @@ import { FilterKey, SortKey } from '../../types/task';
 })
 
 export class TaskComponent implements OnInit {
-  constructor(private modalService: ModalService) {}
-
-  async openTaskModal(type: 'task-edit' | 'task-add', task: any) {
-      this.modalService.open(type, task);
-  }
-
+  modalService = inject(ModalService);
   tasksService = inject(TasksService);
+  authState = inject(AuthStateService);
+  authService = inject(AuthService);
 
   displayFormat: 'list' | 'board' | 'calendar' = 'list';
 
@@ -35,6 +34,18 @@ export class TaskComponent implements OnInit {
 
   ngOnInit() {
     this.weekDates = this.getWeekDates(this.currentDate);
+
+    this.authService.watchAuthState(user => {
+      if(user) {
+        this.tasksService.loadMainTasks();
+      } else {
+        this.tasksService.clearTasks();
+      }
+    })
+  }
+
+  async openTaskModal(type: 'task-edit' | 'task-add', task: any) {
+    this.modalService.open(type, task);
   }
 
   // タスク選択
@@ -142,12 +153,10 @@ export class TaskComponent implements OnInit {
 
       return dates;
   }
-
   getDayName(date: Date): string {
       const days = ['月', '火', '水', '木', '金', '土', '日'];
       return days[date.getDay()];
   }
-
   prevWeek() {
       const newDate = new Date(this.currentDate);
       newDate.setDate(newDate.getDate() - 7);
@@ -155,7 +164,6 @@ export class TaskComponent implements OnInit {
       this.currentDate = newDate;
       this.weekDates = this.getWeekDates(this.currentDate);
   }
-
   nextWeek() {
       const newDate = new Date(this.currentDate);
       newDate.setDate(newDate.getDate() + 7);
@@ -163,7 +171,6 @@ export class TaskComponent implements OnInit {
       this.currentDate = newDate;
       this.weekDates = this.getWeekDates(this.currentDate);
   }
-
   // 今日の日付に移動
   today() {
       const newDate = new Date();
@@ -181,7 +188,6 @@ export class TaskComponent implements OnInit {
           date.getDate() === today.getDate()
       );
   }
-
   formatDate(date: Date): string {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -189,14 +195,12 @@ export class TaskComponent implements OnInit {
 
       return `${year}-${month}-${day}`;
   }
-
   dummyTasks = [
     { id: '1', title: '買い物', startDate: '2026-04-20', dueDate: '2026-04-20' },
     { id: '2', title: '課題提出', startDate: '2026-04-20', dueDate: '2026-04-22' },
     { id: '3', title: 'MTG', startDate: '2026-04-22', dueDate: '2026-04-24' },
     { id: '4', title: 'テスト', startDate: new Date().toISOString().split('T')[0], dueDate: '2026-05-01' },
   ];
-
   getWeekTasks() {
     if (this.weekDates.length === 0) return [];
   
@@ -207,7 +211,6 @@ export class TaskComponent implements OnInit {
       return task.startDate <= weekEnd && task.dueDate >= weekStart;
     });
   }
-
   getTaskStartIndex(task: { startDate: string; dueDate: string }): number {
     const weekStart = this.formatDate(this.weekDates[0]);
   
@@ -217,12 +220,10 @@ export class TaskComponent implements OnInit {
   
     return this.weekDates.findIndex(date => this.formatDate(date) === task.startDate);
   }
-  
   getTaskLeftPercent(task: { startDate: string; dueDate: string }): number {
     const startIndex = this.getTaskStartIndex(task);
     return (startIndex / 7) * 100;
   }
-
   getTaskEndIndex(task: { startDate: string; dueDate: string }): number {
     const weekEnd = this.formatDate(this.weekDates[6]);
   
@@ -232,7 +233,6 @@ export class TaskComponent implements OnInit {
   
     return this.weekDates.findIndex(date => this.formatDate(date) === task.dueDate);
   }
-  
   getTaskWidthPercent(task: { startDate: string; dueDate: string }): number {
     const startIndex = this.getTaskStartIndex(task);
     const endIndex = this.getTaskEndIndex(task);
@@ -240,7 +240,6 @@ export class TaskComponent implements OnInit {
   
     return (spanDays / 7) * 100;
   }
-  
   sortedWeekTasks() {
     return [...this.getWeekTasks()].sort((a, b) => {
       if (a.startDate !== b.startDate) {

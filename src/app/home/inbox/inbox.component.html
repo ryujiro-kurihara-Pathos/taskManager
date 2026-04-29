@@ -31,10 +31,6 @@
                     <p>今日</p>
                 </button>
             }
-            <button class="inbox-item" type="button">
-                <div class="inbox-icon"></div>
-                <p>テスト</p>
-            </button>
         } @else if (activeTab === 'unread') {
             @for (notification of getUnreadNotifications(); track notification.id) {
                 <button class="inbox-item"

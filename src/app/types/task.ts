@@ -1,24 +1,26 @@
 // タスク
 export type Task = {
-    id: string;
-    uid: string;
-    title: string;
-    status: '未着手' | '進行中' | '保留' | '完了' | null;
-    priority: '高' | '中' | '低' | null;
-    dueDate: string | null;
-    startDate: string | null;
-    memo: string | null;
-    parentTaskId: string | null;
+    id: string; // タスクID
+    uid: string; // 作成者ID
+    title: string; // タスク名
+    status: '未着手' | '進行中' | '保留' | '完了'; // ステータス
+    priority: '高' | '中' | '低' | null; // 優先度
+    dueDate: string | null; // 期日
+    startDate: string | null; // 開始日
+    memo: string | null; // メモ
+    parentTaskId: string | null; // 親タスクID
+    assignedUid: string | null; // 担当者ID
 
-    createdAt: string;
+    createdAt: string; // 作成日時
     // updatedAt: string;
-    comments: Comment[];
-    subTasks: Task[];
-    hierarchyTask: Task[];
-    originalTitle: string;
 
-    projectId: string | null;
-    teamId: string | null;
+    comments: Comment[]; // コメント
+    subTasks: Task[]; // サブタスク
+    hierarchyTask: Task[]; // 階層タスク
+    originalTitle: string; // 元のタスク名
+
+    projectId: string | null; // プロジェクトID
+    teamId: string | null; // チームID
 };
 
 export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
@@ -26,12 +28,13 @@ export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'comments' | 'subTask
 export const initialTask: AddTaskInput = {
     uid: '',
     title: '',
-    status: null,
+    status: '未着手',
     priority: null,
     dueDate: null,
     startDate: null,
     memo: null,
     parentTaskId: null,
+    assignedUid: null,
 
     projectId: null,
     teamId: null,

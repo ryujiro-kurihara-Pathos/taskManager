@@ -13,7 +13,10 @@ export class AuthService {
     constructor() {
         onAuthStateChanged(this.auth, (user: User | null) => {
             const uid = user?.uid;
-            if (!uid) return;
+            if (!uid) {
+                this.authState.clearUser();
+                return;
+            }
             this.authState.setUser({
                 id: uid,
                 email: user?.email ?? '',
@@ -22,5 +25,9 @@ export class AuthService {
                 createdAt: user?.metadata.creationTime ?? '',
             });
         });
+    }
+
+    watchAuthState(callback: (user: User | null) => void) {
+        return onAuthStateChanged(this.auth, callback);
     }
 }
