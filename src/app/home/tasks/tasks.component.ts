@@ -44,7 +44,7 @@ export class TaskComponent implements OnInit {
     })
   }
 
-  async openTaskModal(type: 'task-edit' | 'task-add', task: any) {
+  openTaskModal(type: 'task-edit' | 'task-add', task: any) {
     this.modalService.open(type, task);
   }
 

@@ -5,7 +5,7 @@ import {
     existsNotification,
     addNotification,
  } from '../firestore';
-import { FilterKey, SortKey, Task } from '../types/task';
+import { FilterKey, SortKey, Task, initialTask } from '../types/task';
 import { AuthStateService } from './auth-state.service';
 import { AddNotificationInput } from '../types/notification';
 
@@ -23,7 +23,15 @@ export class TasksService {
     // タスク追加モーダル
     isAddingTask: boolean = false;
     // タスク編集モーダル
-    editingTask: Task | null = null;
+    editingTask: Task = { 
+        id: '',
+        ...initialTask,
+        createdAt: '',
+        comments: [],
+        subTasks: [],
+        hierarchyTask: [],
+        originalTitle: '',
+    };
 
     // サブタスク
     subTasks: Task[] = [];

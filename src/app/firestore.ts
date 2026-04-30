@@ -53,7 +53,6 @@ export async function addTask(addTaskInput: AddTaskInput) {
         throw error;
     }
 }
-
 // メインタスクを取得
 export async function getMainTasks(uid: string) {
     try {
@@ -267,7 +266,6 @@ export async function addProject(input: AddProjectInput) {
         return null;
     }
 }
-
 // プロジェクトを取得
 export async function getProjects(uid: string) {
     try {
@@ -297,7 +295,6 @@ export async function getProjects(uid: string) {
         return [];
     }
 }
-
 // ドキュメントIDからプロジェクトを取得
 export async function getProject(projectId: string) {
     try {
@@ -321,7 +318,6 @@ export async function getProject(projectId: string) {
         return null;
     }
 }
-
 // プロジェクトに所属するタスクを取得
 export async function getTasksByProjectId(projectId: string) {
     try {
@@ -339,7 +335,6 @@ export async function getTasksByProjectId(projectId: string) {
         return [];
     }
 }
-
 // プロジェクトへの招待
 export async function inviteToProject(
     projectId: string,
@@ -421,7 +416,6 @@ export async function inviteToProject(
         throw error;
     }
 }
-
 // 以前招待をされていたかどうか
 async function isPreviouslyInvited(uid: string, projectId: string): Promise<boolean> {
     try {
@@ -436,7 +430,6 @@ async function isPreviouslyInvited(uid: string, projectId: string): Promise<bool
         throw error;
     }
 }
-
 // プロジェクトメンバーの脱退
 export async function leaveProject(projectId: string, uid: string) {
     try {
@@ -462,7 +455,6 @@ export async function leaveProject(projectId: string, uid: string) {
         throw error;
     }
 }
-
 // ユーザーが管理者かどうか
 export async function isAdmin(uid: string, projectId: string) {
     try {
@@ -475,7 +467,6 @@ export async function isAdmin(uid: string, projectId: string) {
         return false;
     }
 }
-
 // メンバーを削除
 export async function deleteMember(deletedUid: string, projectId: string) {
     try {
@@ -497,7 +488,6 @@ export async function deleteMember(deletedUid: string, projectId: string) {
         throw error;
     }
 }
-
 // projectInviteを承認に変更
 export async function acceptProjectInvite(inviteId: string, userId: string) {
     try {
@@ -510,7 +500,6 @@ export async function acceptProjectInvite(inviteId: string, userId: string) {
         throw new Error('招待の承認に失敗しました');
     }
 }
-
 // 承認したユーザーをプロジェクトメンバーに加える
 export async function addProjectMember(projectId: string, userId: string) {
     try {
@@ -522,7 +511,6 @@ export async function addProjectMember(projectId: string, userId: string) {
         throw new Error('プロジェクトメンバーの追加に失敗しました');
     }
 }
-
 // projectInviteIdからprojectIdを取得
 export async function getProjectIdFromProjectInviteId(projectInviteId: string) {
     try {
@@ -535,7 +523,6 @@ export async function getProjectIdFromProjectInviteId(projectInviteId: string) {
         throw error;
     }
 }
-
 // projectInviteの招待を拒否する
 export async function declineProjectInvite(projectInviteId: string) {
     try {
@@ -547,7 +534,6 @@ export async function declineProjectInvite(projectInviteId: string) {
         throw new Error('招待の拒否に失敗しました');
     }
 }
-
 // projectInviteの招待状況を取得
 export async function getProjectInviteStatus(projectInviteId: string) {
     try {
@@ -580,7 +566,6 @@ export async function addNotification(data: AddNotificationInput) {
         throw error;
     }
 }
-
 // 通知の取得
 export async function getNotifications(uid: string) {
     try {
@@ -624,7 +609,6 @@ export async function existsNotification(sourceId: string, recieverUid: string) 
         return false;
     }
 }
-
 // 通知を既読にする
 export async function readNotification(notificationId: string) {
     try {
@@ -643,7 +627,7 @@ export async function addTeam(addTeamInput: AddTeamInput) {
     try {
         // チームをドキュメントに追加
         const createdAt = new Date();
-        const teamDoc = await addDoc(collection(db, 'team'), {
+        const teamDoc = await addDoc(collection(db, 'teams'), {
             ...addTeamInput,
             createdAt: new Date(),
         });
@@ -675,7 +659,6 @@ export async function addTeamMember(addTeamMemberInput: AddTeamMemberInput) {
         throw error;
     }
 }
-
 // ユーザーIDが所属しているチームIDを取得
 export async function getTeamMembersByUserId(uid: string) {
     try {
@@ -691,11 +674,10 @@ export async function getTeamMembersByUserId(uid: string) {
         throw error;
     }
 }
-
 // チームIDからチームを取得
 export async function getTeamById(teamId: string) {
     try {
-        const teamRef = doc(db, 'team', teamId);
+        const teamRef = doc(db, 'teams', teamId);
         const snapshot = await getDoc(teamRef);
         if(!snapshot.exists()) return null;
         const team = {
@@ -716,6 +698,66 @@ export async function getTeamsByIds(teamIds: string[]) {
             teams.push(team);
         }
         return teams;
+    } catch (error) {
+        throw error;
+    }
+}
+// チームメンバーを取得
+export async function getTeamMembersByTeamId(teamId: string) {
+    try {
+        const teamMemberRef = collection(db, 'teamMembers');
+        const q = query(teamMemberRef, where('teamId', '==', teamId));
+        const snapshot = await getDocs(q);
+        const teamMembers: TeamMember[] = [];
+        snapshot.forEach((doc) => {
+            teamMembers.push({
+                id: doc.id,
+                teamId: doc.data()['teamId'],
+                userId: doc.data()['userId'],
+                role: doc.data()['role'],
+                createdAt: doc.data()['createdAt'],
+            } as TeamMember);
+        });
+        return teamMembers;
+    } catch (error) {
+        throw error;
+    }
+}
+// チームタスクを取得
+export async function getTasksByTeamId(teamId: string) {
+    try {
+        const taskRef = collection(db, 'tasks');
+        const q = query(taskRef, 
+            where('teamId', '==', teamId),
+            where('parentTaskId', '==', null),
+        );
+        const snapshot = await getDocs(q);
+        const tasks: Task[] = [];
+        snapshot.forEach((doc) => {
+            tasks.push({
+                id: doc.id,
+                ...doc.data(),
+            } as Task);
+        });
+        return tasks;
+    } catch (error) {
+        throw error;
+    }
+}
+// チームタスクの追加
+export async function addTeamTask(addTaskInput: AddTaskInput) {
+    try {
+        const createdAt = new Date();
+        const taskDoc = await addDoc(collection(db, 'tasks'), {
+            ...addTaskInput,
+            createdAt: createdAt,
+        });
+        const task = {
+            id: taskDoc.id,
+            ...addTaskInput,
+            createdAt: createdAt.toISOString(),
+        } as Task;
+        return task;
     } catch (error) {
         throw error;
     }

@@ -9,6 +9,7 @@ type ModalType =
 'project-invite' |
 'project-member-list' |
 'notification-detail' |
+'team-task-detail' |
 null;
 
 export interface ModalState {
@@ -31,7 +32,7 @@ export class ModalService {
     modalState$ = this.modalStateSubject.asObservable();
 
     async open(type: ModalType, data: any) {
-        if (type === 'task-edit') {
+        if (type === 'task-edit' || type === 'team-task-detail') {
             data = await this.getTaskEditData(data);
         }
         this.modalStateSubject.next({
@@ -48,7 +49,6 @@ export class ModalService {
             data: null,
         });
     }
-
 
     // タスク編集の場合に実行すること
     async getTaskEditData(task: any) {

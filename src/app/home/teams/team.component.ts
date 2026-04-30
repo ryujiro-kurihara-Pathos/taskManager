@@ -1,10 +1,12 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
+import { RouterModule } from '@angular/router';
 import { AddTeamInput, initialTeamInput, Team } from '../../types/team';
 import {
     addTeam,
     addTeamMember,
     getTeamMembersByUserId,
     getTeamsByIds,
+    getTeamMembersByTeamId,
 } from '../../firestore';
 import { AuthStateService } from '../../services/auth-state.service';
 import { FormsModule } from '@angular/forms';
@@ -15,7 +17,7 @@ import { AuthService } from '../../services/auth.service';
     selector: 'app-teams',
     templateUrl: './team.component.html',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, RouterModule],
 })
 
 export class TeamComponent {
@@ -24,16 +26,41 @@ export class TeamComponent {
 
     // 追加するチーム
     addingTeam: AddTeamInput = { ...initialTeamInput };
-    teams: Team[] = [];
+    // teams: Team[] = [];
+    teams = signal<Team[]>([]);
 
     async ngOnInit() {
         this.authService.watchAuthState(async(user) => {
             if(!user) {
-                this.teams = [];
+                this.clearTeams();
                 return;
             }
-            this.teams = await this.getUserTeams(user.uid);
+            this.loadTeams();
         })
+    }
+
+    setTeams(teams: Team[]) {
+        this.teams.set(teams);
+    }
+
+    clearTeams() {
+        this.teams.set([]);
+    }
+
+    addTeam(team: Team) {
+        this.teams.update(teams => [...teams, team]);
+    }
+
+    // チームをロードする
+    async loadTeams() {
+        try {
+            const uid = this.authState.uid;
+            if(!uid) return;
+            const teams = await this.getUserTeams(uid);
+            this.setTeams(teams);
+        } catch (error) {
+            console.error("チームロード失敗: ", error);
+        }
     }
 
     // チームを追加
@@ -46,12 +73,14 @@ export class TeamComponent {
                 ownerId: uid,
                 description: this.addingTeam.description,
             });
+            if(!teamResult) return;
             await addTeamMember({
                 teamId: teamResult.id,
                 userId: uid,
                 role: 'owner',
             });
-            
+
+            this.addTeam(teamResult);
             this.addingTeam = { ...initialTeamInput };
         } catch (error) {
             console.error("チーム追加失敗: ", error);
@@ -69,6 +98,17 @@ export class TeamComponent {
             return teams;
         } catch (error) {
             console.error("チーム取得失敗: ", error);
+            return [];
+        }
+    }
+
+    // チームメンバーを取得
+    async getTeamMembersByTeamId(teamId: string) {
+        try {
+            const teamMembers = await getTeamMembersByTeamId(teamId);
+            return teamMembers;
+        } catch (error) {
+            console.error("チームメンバー取得失敗: ", error);
             return [];
         }
     }

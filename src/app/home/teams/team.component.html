@@ -1,15 +1,40 @@
-<h1>チーム</h1>
+<div class="team-container">
+    <div class="team-header">
+        <p class="team-header-title">チーム</p>
+    </div>
+    <div class="team-body">
+        <input type="text"
+        [(ngModel)]="addingTeam.name"
+        placeholder="チーム名を入力してください"
+        >
+        <button (click)=addTeams()>チームを追加</button>
+        <div class="team-list">
+            @for (team of teams(); track team.id) {
+                <a class="team-item" [routerLink]="['/home/teams', team.id]">
+                    <p class="team-name">{{ team.name }}</p>
+                </a>
+            }
+        </div>
+    </div>
+</div>
 
-<input type="text"
-    [(ngModel)]="addingTeam.name"
-    placeholder="チーム名を入力してください"
->
+<style>
+    .team-container {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .team-header {
+        padding: 10px 20px;
+        border-bottom: 1px solid #a1a39f;
+        margin-bottom: 24px;
+    }
+    .team-header-title {
+        margin: 0;
+        font-size: 20px;
+        font-weight: bold;
+    }
 
-<button (click)=addTeams()>チームを追加</button>
-
-@for (team of teams; track team.id) {
-    <p>{{ team.name }}</p>
-}
-@if (teams.length === 0) {
-    <p>チームがありません</p>
-}
+    .team-body {
+        width: 100%;
+    }
+</style>

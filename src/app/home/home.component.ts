@@ -1,4 +1,4 @@
-import { Component, ViewChildren, QueryList, ElementRef, inject, OnInit } from '@angular/core';
+import { Component, ViewChildren, QueryList, ElementRef, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, Router, RouterOutlet } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
@@ -37,7 +37,7 @@ import { logout } from '../auth';
   templateUrl: './home.component.html',
 })
 
-export class HomeComponent implements OnInit {
+export class HomeComponent {
   authState = inject(AuthStateService);
   authService = inject(AuthService);
   tasksService = inject(TasksService);
@@ -56,15 +56,15 @@ export class HomeComponent implements OnInit {
   addingTask: AddTaskInput = { ...initialTask };
   addingSubTask: Task | null = null;
   commentContent: string = '';
-  editingTask: Task = { 
-    id: '',
-    ...initialTask,
-    createdAt: '',
-    comments: [],
-    subTasks: [],
-    hierarchyTask: [],
-    originalTitle: '',
-  };
+  // editingTask: Task = { 
+  //   id: '',
+  //   ...initialTask,
+  //   createdAt: '',
+  //   comments: [],
+  //   subTasks: [],
+  //   hierarchyTask: [],
+  //   originalTitle: '',
+  // };
 
   // プロジェクト
   projectInviteInput: AddProjectInviteInput = initialProjectInviteInput;
@@ -84,14 +84,19 @@ export class HomeComponent implements OnInit {
 
         // this.currentTask = task;
 
-        this.editingTask = { ...task };
+        this.tasksService.editingTask = { ...task };
       }
     });
   }
 
   closeModal() {
+    const type = this.modalState.type;
+    if(type === 'task-edit' || type === 'team-task-detail') {
+      this.tasksService.editingTask = { ...initialTask as Task };
+    } else if(type === 'project-invite') {
+      this.inviteEmailOrUserName = '';
+    }
     this.modalService.close();
-    this.inviteEmailOrUserName = '';
   }
 
   // フィールドを追加
@@ -238,14 +243,14 @@ export class HomeComponent implements OnInit {
     }
   }
 
-  // editingTaskを変更する
+  // editingTaskを変更する(モーダル内のタスクを変更する)
   async changeEditingTask(task: Task) {
+    // タスクが追加されていない場合は変更できない
     const isExisting = await isExistingCollection('tasks', task.id);
     if(!isExisting) return;
     try {
-      this.modalState.data = await getTask(task.id);
-      this.modalState.data.subTasks = await this.getSubTasks(task.id);
-      this.modalState.data.hierarchyTask = await this.modalService.getSubTaskHierarchy(task.id);
+      this.tasksService.editingTask = { ...task };
+      await this.modalService.open('task-edit', this.tasksService.editingTask);
     } catch (error) {
       console.error("編集中のタスク変更失敗: ", error);
     }
