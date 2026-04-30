@@ -10,7 +10,7 @@
     </div>
     <div class="team-body">
         <div class="team-summary">
-            <div class="summary-card">
+            <div class="summary-card" (click)="openTeamMemberDetailModal(teamMembers())">
                 <p class="summary-label">メンバー</p>
                 <p class="summary-value">{{ teamMembers().length }}</p>
             </div>

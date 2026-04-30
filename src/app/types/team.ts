@@ -1,3 +1,5 @@
+import { User } from "./user";
+
 export type Team = {
     id: string; // ドキュメントID
 
@@ -25,9 +27,11 @@ export type TeamMember = {
     role: 'owner' | 'admin' | 'member'; // 役割
 
     createdAt: string; // チームメンバー作成日時
+
+    user: User | null; // ユーザー情報
 };
 
-export type AddTeamMemberInput = Omit<TeamMember, 'id' | 'createdAt'>;
+export type AddTeamMemberInput = Omit<TeamMember, 'id' | 'createdAt' | 'user'>;
 
 export const initialTeamMemberInput: AddTeamMemberInput = {
     teamId: '',

@@ -1,5 +1,6 @@
 export type NotificationType = 
 'project-invite' |
+'team-invite' |
 'task-deadline';
 
 export type Notification = {

@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
 import {
     getNotifications,
-    acceptProjectInvite,
+    acceptInvite,
     addProjectMember,
     getProjectIdFromProjectInviteId,
     readNotification,
@@ -69,7 +69,7 @@ export class InboxComponent {
             const projectId = await getProjectIdFromProjectInviteId(notification.sourceId);
             if (!projectId) return;
 
-            await acceptProjectInvite(notification.sourceId, currentUser.id);
+            await acceptInvite(notification.sourceId, currentUser.id);
             await addProjectMember(projectId, currentUser.id);
         } catch (error) {
             throw error;

@@ -1,7 +1,13 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
-import { getComments, getSubTasks, getTask } from '../firestore';
+import {
+    getComments,
+    getSubTasks,
+    getTask,
+    getUsers,
+} from '../firestore';
 import { Task } from '../types/task';
+import { TeamMember } from '../types/team';
 
 type ModalType =
 'task-edit' | 
@@ -10,6 +16,7 @@ type ModalType =
 'project-member-list' |
 'notification-detail' |
 'team-task-detail' |
+'team-member-detail' |
 null;
 
 export interface ModalState {
@@ -34,6 +41,8 @@ export class ModalService {
     async open(type: ModalType, data: any) {
         if (type === 'task-edit' || type === 'team-task-detail') {
             data = await this.getTaskEditData(data);
+        } else if (type === 'team-member-detail') {
+            data = await this.getTeamMemberDetailData(data);
         }
         this.modalStateSubject.next({
             isOpen: true,
@@ -104,6 +113,23 @@ export class ModalService {
         } catch (error) {
         console.error("コメント取得失敗: ", error);
         return [];
+        }
+    }
+
+    // チームメンバーの情報を取得
+    async getTeamMemberDetailData(members: TeamMember[]) {
+        try {
+            const users = await getUsers(members.map((member) => member.userId));
+            users.forEach((user) => {
+                const member = members.find((member) => member.userId === user.id);
+                if(member) {
+                    member.user = user;
+                }
+            })
+            return members;
+        } catch (error) {
+            console.error("チームメンバーの情報を取得できませんでした", error);
+            return [];
         }
     }
 }

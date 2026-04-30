@@ -2,13 +2,13 @@ import { Component, inject } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
-import { ProjectInvite } from "../../types/project";
 import { AuthStateService } from "../../services/auth-state.service";
 import {
-    acceptProjectInvite,
+    acceptInvite,
     addProjectMember,
     declineProjectInvite,
 } from '../../firestore';
+import { Invite } from "../../types/Invite";
 
 
 @Component({
@@ -21,7 +21,7 @@ export class InviteResponseComponent {
     private route = inject(ActivatedRoute);
     private authState = inject(AuthStateService);
 
-    invite: ProjectInvite | null = null;
+    invite: Invite | null = null;
     inviteId: string | null = null;
     message = '';
 
@@ -60,7 +60,7 @@ export class InviteResponseComponent {
 
         return {
             id: inviteSnap.id,
-            ...(inviteSnap.data() as Omit<ProjectInvite, 'id'>),
+            ...(inviteSnap.data() as Omit<Invite, 'id'>),
         };
     }
     // 招待を承認
@@ -76,8 +76,8 @@ export class InviteResponseComponent {
         }
 
         try {
-            await acceptProjectInvite(this.invite.id, currentUser.id);
-            await addProjectMember(this.invite.projectId, currentUser.id);
+            await acceptInvite(this.invite.id, currentUser.id);
+            await addProjectMember(this.invite.targetId, currentUser.id);
             this.message = '招待を承認しました';
         } catch (error) {
             this.message = error instanceof Error ? error.message : '招待の承認に失敗しました';

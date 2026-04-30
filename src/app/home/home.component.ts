@@ -14,10 +14,10 @@ import {
   getSubTasks,
   getTask,
   deleteChildrenTask,
-  inviteToProject,
+  invite,
   isAdmin,
   deleteMember,
-  acceptProjectInvite,
+  acceptInvite,
   addProjectMember,
   getProjectIdFromProjectInviteId,
   declineProjectInvite,
@@ -28,8 +28,9 @@ import { TasksService } from '../services/tasks.service';
 import { AuthService } from '../services/auth.service';
 import { Task, Comment, AddTaskInput, initialTask } from '../types/task';
 import { ModalService, ModalState } from '../services/modal.service';
-import { AddProjectInviteInput, initialProjectInviteInput } from '../types/project';  
 import { logout } from '../auth';
+import { User } from '../types/user';
+import { AddInviteInput, initialInviteInput } from '../types/Invite';
 
 @Component({
   selector: 'app-home',
@@ -56,22 +57,16 @@ export class HomeComponent {
   addingTask: AddTaskInput = { ...initialTask };
   addingSubTask: Task | null = null;
   commentContent: string = '';
-  // editingTask: Task = { 
-  //   id: '',
-  //   ...initialTask,
-  //   createdAt: '',
-  //   comments: [],
-  //   subTasks: [],
-  //   hierarchyTask: [],
-  //   originalTitle: '',
-  // };
 
   // プロジェクト
-  projectInviteInput: AddProjectInviteInput = initialProjectInviteInput;
+  inviteInput: AddInviteInput = initialInviteInput;
   inviteEmailOrUserName: string = '';
 
   searchQuery: string = '';
   searchedTasks: Task[] = [];
+
+  // メールアドレスでユーザーを検索
+  searchedUsers: User[] = [];
 
   @ViewChildren('subTaskInput') subTaskInputs!: QueryList<ElementRef<HTMLInputElement>>;
 
@@ -93,7 +88,7 @@ export class HomeComponent {
     const type = this.modalState.type;
     if(type === 'task-edit' || type === 'team-task-detail') {
       this.tasksService.editingTask = { ...initialTask as Task };
-    } else if(type === 'project-invite') {
+    } else if(type === 'project-invite' || type === 'team-member-detail') {
       this.inviteEmailOrUserName = '';
     }
     this.modalService.close();
@@ -299,10 +294,11 @@ export class HomeComponent {
 
   // プロジェクト
   // プロジェクトへの招待
-  async inviteToProject(projectId: string) {
+  async invite(type: 'project' | 'team', targetId: string) {
     try {
-      const isInvited = await inviteToProject(
-        projectId,
+      const isInvited = await invite(
+        type,
+        targetId,
         this.inviteEmailOrUserName,
         this.authState.user()?.email ?? '',
         this.authState.uid,
@@ -310,7 +306,7 @@ export class HomeComponent {
       if (!isInvited) return;
       this.closeModal();
     } catch (error) {
-      console.error("プロジェクトへの招待失敗: ", error);
+      console.error("招待失敗: ", error);
     }
   }
 
@@ -336,17 +332,17 @@ export class HomeComponent {
 
   // 通知
   // 招待を承諾する
-  async acceptInvite(projectInvitedId: string) {
+  async acceptInvite(invitedId: string) {
     try {
       // 招待への承認がすでにある場合は承認できない
-      const status = await getProjectInviteStatus(projectInvitedId);
+      const status = await getProjectInviteStatus(invitedId);
       if (status !== 'pending') return;
 
       const uid = this.authState.uid;
       if (!uid) return;
-      const projectId = await getProjectIdFromProjectInviteId(projectInvitedId);
+      const projectId = await getProjectIdFromProjectInviteId(invitedId);
       if (!projectId) return;
-      await acceptProjectInvite(projectInvitedId, this.authState.uid);
+      await acceptInvite(invitedId, this.authState.uid);
       await addProjectMember(projectId, this.authState.uid);
       this.closeModal();
     } catch (error) {

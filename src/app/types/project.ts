@@ -14,27 +14,28 @@ export type Project = {
 
 export type AddProjectInput = Omit<Project, 'id' | 'createdAt'>;
 
-export type ProjectInvite = {
-    id: string;
-    projectId: string;
-    invitedUid: string; // 招待された側
-    invitedByUid: string; // 招待した側
-    status: 'pending' | 'accepted' | 'declined' | 'left';
-    createdAt: string;
-    email: string;
+// export type ProjectInvite = {
+//     id: string;
+//     projectId: string;
+//     invitedUid: string; // 招待された側
+//     invitedByUid: string; // 招待した側
+//     status: 'pending' | 'accepted' | 'declined' | 'left';
+//     createdAt: string;
+//     email: string;
 
-    isRead: boolean;
-    isImportant: boolean;
-}
+//     isRead: boolean;
+//     isImportant: boolean;
+// }
 
-export type AddProjectInviteInput = Omit<ProjectInvite, 'id' | 'createdAt'>;
+// export type AddProjectInviteInput = Omit<ProjectInvite, 'id' | 'createdAt'>;
 
-export const initialProjectInviteInput: AddProjectInviteInput = {
-    projectId: '',
-    invitedUid: '',
-    invitedByUid: '',
-    status: 'pending',
-    email: '',
-    isRead: false,
-    isImportant: false,
-}
+// export const initialProjectInviteInput: AddProjectInviteInput = {
+//     projectId: '',
+//     invitedUid: '',
+//     invitedByUid: '',
+//     status: 'pending',
+//     email: '',
+//     isRead: false,
+//     isImportant: false,
+// }
+

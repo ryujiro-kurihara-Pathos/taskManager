@@ -13,9 +13,11 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { AddTaskInput, Task } from "./types/task";
-import { Project, AddProjectInput, ProjectInvite } from "./types/project";
+import { Project, AddProjectInput } from "./types/project";
 import { Notification, AddNotificationInput } from "./types/notification";
 import { AddTeamInput, AddTeamMemberInput, Team, TeamMember } from "./types/team";
+import { User } from "./types/user";
+import { Invite } from "./types/Invite";
 
 // フィールドの追加
 export async function addField(taskID: string, fieldName: string, fieldValue: any) {
@@ -24,6 +26,35 @@ export async function addField(taskID: string, fieldName: string, fieldValue: an
             [fieldName]: fieldValue,
         });
     } catch(error) {
+        throw error;
+    }
+}
+
+// ユーザー
+export async function getUser(userId: string) {
+    try {
+        const userRef = doc(db, 'users', userId);
+        const snapshot = await getDoc(userRef);
+        if(!snapshot.exists()) return null;
+        const user = {
+            id: snapshot.id,
+            ...snapshot.data(),
+        } as User;
+        return user;
+    } catch (error) {
+        throw error;
+    }
+}
+export async function getUsers(userIds: string[]) {
+    try {
+        const users: User[] = [];
+        for (const userId of userIds) {
+            const user = await getUser(userId);
+            if(!user) continue;
+            users.push(user);
+        }
+        return users;
+    } catch (error) {
         throw error;
     }
 }
@@ -336,81 +367,89 @@ export async function getTasksByProjectId(projectId: string) {
     }
 }
 // プロジェクトへの招待
-export async function inviteToProject(
-    projectId: string,
+export async function invite(
+    type: 'project' | 'team',
+    targetId: string,
     invitedEmailOrUserName: string,
     myEmail: string,
     invitedByUid: string, // 招待したユーザー
 ) {
     try {
-        // 招待されるユーザーのメールアドレスが存在しない場合は招待しない
+        // メールアドレスが一致するユーザーが存在しない場合は招待しない
         const invitedUserRef = collection(db, 'users');
         const q = query(invitedUserRef, where('email', '==', invitedEmailOrUserName));
         const snapshot = await getDocs(q);
-        if (snapshot.empty) return false;
+        if(snapshot.empty) return false;
         const invitedUid = snapshot.docs[0].id;
         if(!invitedUid) return false;
+
         // 自分のメールアドレスの場合falseを返す
         if(invitedEmailOrUserName === myEmail) return false;
+
+        // 招待したチームもしくはプロジェクトが存在しない場合は招待しない
+        const targetRef = doc(db, type === 'project' ? 'projects' : 'teams', targetId);
+        const targetSnap = await getDoc(targetRef);
+        if(!targetSnap.exists()) return false;
+
         // 招待したユーザーが管理者でない場合は招待しない
-        const projectRef = doc(db, 'projects', projectId);
-        const projectSnap = await getDoc(projectRef);
-        if(!projectSnap.exists()) return false;
-        const projectData = projectSnap.data() as Project;
-        if(projectData.ownerId !== invitedByUid) return false;
+        const targetData = targetSnap.data() as Project | Team;
+        if(targetData.ownerId !== invitedByUid) return false;
+
         // 以前招待をされていたかどうか
-        const isPreviouslyInvitedResult: boolean = await isPreviouslyInvited(invitedUid, projectId);
-        let projectInviteId: string | null = null;
+        const isPreviouslyInvitedResult: boolean = await isPreviouslyInvited(invitedUid, targetId);
+        let inviteId: string | null = null;
         if(isPreviouslyInvitedResult) {
             // 招待の承認待ちの場合、招待をやめる
-            const projectInviteRef = collection(db, 'projectInvites');
-            const q = query(projectInviteRef, where('invitedUid', '==', invitedUid), where('projectId', '==', projectId));
+            const inviteRef = collection(db, 'invites');
+            const q = query(inviteRef, where('invitedUid', '==', invitedUid), where('targetId', '==', targetId));
             const snapshot = await getDocs(q);
             if(snapshot.empty) return false;
-            projectInviteId = snapshot.docs[0].id;
-            if(!projectInviteId) return false;
+            inviteId = snapshot.docs[0].id;
+            if(!inviteId) return false;
             if(snapshot.docs[0].data()['status'] === 'pending') return false;
-            // projectInviteの招待情報を変更
-            await updateDoc(doc(db, 'projectInvites', projectInviteId), {
+            // inviteの招待情報を変更
+            await updateDoc(doc(db, 'invites', inviteId), {
                 status: 'pending',
             });
         } else {
-            // projectInvitesに招待情報を追加
-            const projectInviteDoc = await addDoc(collection(db, 'projectInvites'), {
-                projectId: projectId,
+            // invitesに招待情報を追加
+            const inviteDoc = await addDoc(collection(db, 'invites'), {
+                type: type,
+                targetId: targetId,
                 invitedUid: invitedUid,
                 invitedByUid: invitedByUid,
                 status: 'pending',
-                email: invitedEmailOrUserName,
                 createdAt: new Date(),
+                email: invitedEmailOrUserName,
+                isRead: false,
+                isImportant: false,
             });
-            projectInviteId = projectInviteDoc.id;
+            inviteId = inviteDoc.id;
         }
         // 招待を通知ドキュメントに追加
         await addNotification({
             uid: invitedUid,
-            type: 'project-invite',
-            title: 'プロジェクト招待',
-            message: 'プロジェクト招待があります',
+            type: type === 'project' ? 'project-invite' : 'team-invite',
+            title: type === 'project' ? 'プロジェクト招待' : 'チーム招待',
+            message: type === 'project' ? 'プロジェクト招待があります' : 'チーム招待があります',
             fromUid: invitedByUid,
-            sourceId: projectInviteId,
+            sourceId: inviteId,
             isRead: false,
             isImportant: false,
         })
         // メール送信用ドキュメント
-        await addDoc(collection(db, 'mail'), {
-            to: [invitedEmailOrUserName],
-            template: {
-                name: 'プロジェクト招待メール',
-                data: {
-                    projectName: 'プロジェクト招待',
-                    invitedByName: '招待者名',
-                    approvalUrl: '承認URL',
-                    rejectionUrl: '拒否URL',
-                }
-            }
-        })
-        console.log("メール送信成功");
+        // await addDoc(collection(db, 'mail'), {
+        //     to: [invitedEmailOrUserName],
+        //     template: {
+        //         name: 'プロジェクト招待メール',
+        //         data: {
+        //             projectName: 'プロジェクト招待',
+        //             invitedByName: '招待者名',
+        //             approvalUrl: '承認URL',
+        //             rejectionUrl: '拒否URL',
+        //         }
+        //     }
+        // })
         return true;
     } catch (error) {
         throw error;
@@ -489,11 +528,11 @@ export async function deleteMember(deletedUid: string, projectId: string) {
     }
 }
 // projectInviteを承認に変更
-export async function acceptProjectInvite(inviteId: string, userId: string) {
+export async function acceptInvite(inviteId: string, userId: string) {
     try {
-        const projectInviteRef = doc(db, 'projectInvites', inviteId);
-        // projectInviteのデータを更新する
-        await updateDoc(projectInviteRef, {
+        const inviteRef = doc(db, 'invites', inviteId);
+        // inviteのデータを更新する
+        await updateDoc(inviteRef, {
             status: 'accepted',
         });
     } catch (error) {
@@ -514,20 +553,20 @@ export async function addProjectMember(projectId: string, userId: string) {
 // projectInviteIdからprojectIdを取得
 export async function getProjectIdFromProjectInviteId(projectInviteId: string) {
     try {
-        const projectInviteRef = doc(db, 'projectInvites', projectInviteId);
+        const projectInviteRef = doc(db, 'invites', projectInviteId);
         const projectInviteSnap = await getDoc(projectInviteRef);
         if(!projectInviteSnap.exists()) return null;
-        const projectInviteData = projectInviteSnap.data() as ProjectInvite;
-        return projectInviteData.projectId;
+        const projectInviteData = projectInviteSnap.data() as Invite;
+        return projectInviteData.targetId;
     } catch (error) {
         throw error;
     }
 }
 // projectInviteの招待を拒否する
-export async function declineProjectInvite(projectInviteId: string) {
+export async function declineProjectInvite(inviteId: string) {
     try {
-        const projectInviteRef = doc(db, 'projectInvites', projectInviteId);
-        await updateDoc(projectInviteRef, {
+        const inviteRef = doc(db, 'invites', inviteId);
+        await updateDoc(inviteRef, {
             status: 'declined',
         });
     } catch (error) {
@@ -535,13 +574,13 @@ export async function declineProjectInvite(projectInviteId: string) {
     }
 }
 // projectInviteの招待状況を取得
-export async function getProjectInviteStatus(projectInviteId: string) {
+export async function getProjectInviteStatus(inviteId: string) {
     try {
-        const projectInviteRef = doc(db, 'projectInvites', projectInviteId);
-        const projectInviteSnap = await getDoc(projectInviteRef);
-        if(!projectInviteSnap.exists()) return null;
-        const projectInviteData = projectInviteSnap.data() as ProjectInvite;
-        return projectInviteData.status;
+        const inviteRef = doc(db, 'invites', inviteId);
+        const inviteSnap = await getDoc(inviteRef);
+        if(!inviteSnap.exists()) return null;
+        const inviteData = inviteSnap.data() as Invite;
+        return inviteData.status;
     } catch (error) {
         throw error;
     }

@@ -148,4 +148,9 @@ export class TeamDetailComponent {
         }
         return [];
     }
+
+    // チームメンバーの詳細モーダルを開く
+    openTeamMemberDetailModal(members: TeamMember[]) {
+        this.modalService.open('team-member-detail', members);
+    }
 }

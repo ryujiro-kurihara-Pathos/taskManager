@@ -251,7 +251,7 @@
               <p class="modal-content-label">メールで招待</p>
               <div class="modal-content-email-input-container">
                 <input type="email" [(ngModel)]="inviteEmailOrUserName" placeholder="メールアドレスを入力してください" />
-                <button class="project-invite-btn" type="button" (click)="inviteToProject(modalState.data.id)">招待</button>
+                <button class="project-invite-btn" type="button" (click)="invite('project', modalState.data.id)">招待</button>
               </div>
             </div>
           </div>
@@ -424,6 +424,31 @@
           </div>
           <button class="edit-task-save-btn" type="button" (click)="onSaveTaskEdit(tasksService.editingTask)">保存</button>
           <button class="edit-task-delete-btn" type="button" (click)="deleteTask(modalState.data.id)">削除</button>
+        </div>
+      </div>
+    } @else if (modalState.type === 'team-member-detail') {
+      <div class="modal" (click)="closeModal()">
+        <div class="modal-form" (click)="$event.stopPropagation()">
+          <div class="modal-top">
+            <p>チームメンバー</p>
+            <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
+          </div>
+          <div class="modal-body">
+            @for (member of modalState.data; track member.id) {
+              <div class="team-member-item">
+                <div class="team-member-item-icon">
+                  <span>{{ member.user?.userName.charAt(0) }}</span>
+                </div>
+                <p>{{ member.user?.userName }}</p>
+              </div>
+            }
+            <input type="text" [(ngModel)]="inviteEmailOrUserName" placeholder="メールアドレスを入力してください" />
+            <button class="modal-footer-btn">
+              招待
+            </button>
+          </div>
+          <div class="modal-footer">
+          </div>
         </div>
       </div>
     }
@@ -798,5 +823,22 @@
   }
   .modal-footer-btn:hover {
     background-color: rgb(20, 117, 44);
+  }
+
+  /* チームメンバー */
+  .team-member-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .team-member-item-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #dbdbdb;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 </style>
