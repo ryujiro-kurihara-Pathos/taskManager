@@ -1,3 +1,5 @@
+import { User } from "./user";
+
 // タスク
 export type Task = {
     id: string; // タスクID
@@ -9,7 +11,9 @@ export type Task = {
     startDate: string | null; // 開始日
     memo: string | null; // メモ
     parentTaskId: string | null; // 親タスクID
+
     assignedUid: string | null; // 担当者ID
+    assignableUsers: User[] | null; // 担当者候補
 
     createdAt: string; // 作成日時
     // updatedAt: string;
@@ -23,7 +27,7 @@ export type Task = {
     teamId: string | null; // チームID
 };
 
-export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
+export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'assignableUsers' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
 
 export const initialTask: AddTaskInput = {
     uid: '',

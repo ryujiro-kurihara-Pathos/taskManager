@@ -94,6 +94,10 @@ export class HomeComponent {
     this.modalService.close();
   }
 
+  resetTask() {
+    this.tasksService.editingTask = { ...this.modalState.data as Task };
+  }
+
   // フィールドを追加
   async addField(fieldName: string, fieldValue: any) {
     try {
@@ -125,12 +129,27 @@ export class HomeComponent {
   // タスク追加
   async addTask() {
     try {
+      // ログインが必要
       const uid = this.authState.uid;
       if(!uid) return;
+
+      // ユーザーIDの設定
       this.addingTask.uid = uid;
+
+      // 担当者の設定
+      if(!this.addingTask.teamId && !this.addingTask.projectId) {
+        this.addingTask.assignedUid = uid;
+      }
+
+      // タスクの追加
       const newTask = await addTask(this.addingTask);
+      if(!newTask) return;
       this.tasksService.addTask(newTask as Task);
+
+      // モーダルを閉じる
       this.closeModal();
+
+      // 追加タスクをリセット
       this.addingTask = { ...initialTask };
     } catch (error) {
       console.error("タスク追加失敗: ", error);
@@ -146,7 +165,6 @@ export class HomeComponent {
       console.error("タスク削除失敗: ", error);
     }
   }
-
   // タスク編集モーダルで保存ボタンを押したときの処理
   async onSaveTaskEdit(task: Task) {
     try {
@@ -156,11 +174,23 @@ export class HomeComponent {
       console.error("タスク編集保存失敗: ", error);
     }
   }
-
   // タスクの更新
   async updateTask(task: Task) {
     try {
-      await updateTask(task.id, {...task } as AddTaskInput);
+      const addTaskInput: AddTaskInput = {
+        uid: task.uid,
+        title: task.title,
+        parentTaskId: task.parentTaskId ?? null,
+        projectId: task.projectId ?? null,
+        dueDate: task.dueDate ?? null,
+        startDate: task.startDate ?? null,
+        status: task.status ?? null,
+        priority: task.priority ?? null,
+        memo: task.memo ?? null,
+        assignedUid: task.assignedUid ?? null,
+        teamId: task.teamId ?? null,
+      }
+      await updateTask(task.id, addTaskInput);
       this.tasksService.updateTask(task);
     } catch (error) {
       console.error("タスク更新失敗: ", error);
@@ -198,7 +228,6 @@ export class HomeComponent {
       this.addingSubTask = null;
     }
   }
-
   // タスクをFirestoreに追加
   async addTaskToFirestore(task: Task, type: 'subTask' | 'mainTask') {
     try {
@@ -237,7 +266,6 @@ export class HomeComponent {
       console.error("タスクタイトル更新失敗: ", error);
     }
   }
-
   // editingTaskを変更する(モーダル内のタスクを変更する)
   async changeEditingTask(task: Task) {
     // タスクが追加されていない場合は変更できない
@@ -282,7 +310,6 @@ export class HomeComponent {
     console.error("コメント追加失敗: ", error);
     }
   }
-
   async deleteComment(commentId: string) {
     try {
       await deleteComment(commentId);
@@ -309,12 +336,10 @@ export class HomeComponent {
       console.error("招待失敗: ", error);
     }
   }
-
   // そのメンバーが自分かどうか
   isMemberSelf(memberId: string) {
     return memberId === this.authState.uid;
   }
-
   // メンバーを削除
   async deleteMember(memberId: string, projectId: string) {
     try {

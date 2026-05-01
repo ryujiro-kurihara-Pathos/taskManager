@@ -72,6 +72,7 @@ export async function addTask(addTaskInput: AddTaskInput) {
             id: taskDoc.id,
             ...addTaskInput,
             createdAt: createdAt.toISOString(),
+            assignableUsers: [],
             comments: [],
             subTasks: [],
             hierarchyTask: [],

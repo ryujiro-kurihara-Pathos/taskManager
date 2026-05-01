@@ -35,7 +35,7 @@
       [class.selected]="isSelectedSort"
       (click)="toggleSortMenu()">ソート</button>
     @if (tasksService.sortKey !== null) {
-      <button class="clear-btn" type="button" (click)="clearSort()">×</button>
+      <button class="clear-btn" type="button" (click)="clearSort()">{{ getSortLabel(tasksService.sortKey) }} ×</button>
     }
     @if (isSortMenuOpen) {
       <div class="dropdown-menu">
@@ -67,13 +67,60 @@
             <tr>
               <th class="task-table-column-checkbox"></th>
               <th class="task-table-column-title">タスク名</th>
-              <th class="task-table-column-due-date">期日</th>
-              <th class="task-table-column-status">進捗</th>
-              <th class="task-table-column-priority">優先度</th>
+              <th class="filter-th task-table-column-due-date">
+                <button class="th-filter-btn" (click)="tasksService.toggleDueDateFilter()">
+                  期日
+                  @if (tasksService.dueDateFilter) {
+                    <span class="due-date-filter-icon">●</span>
+                  }
+                </button>
+                @if (tasksService.isDueDateFilterOpen) {
+                  <div class="th-filter-menu">
+                    <button type="button" (click)="tasksService.selectDueDate(null)">すべて</button>
+                    <button type="button" (click)="tasksService.selectDueDate('今日')">今日</button>
+                    <button type="button" (click)="tasksService.selectDueDate('明日')">明日</button>
+                    <button type="button" (click)="tasksService.selectDueDate('未設定')">未設定</button>
+                  </div>
+                }
+              </th>
+              <th class="filter-th task-table-column-status">
+                <button class="th-filter-btn" (click)="tasksService.toggleProgressFilter()">
+                  進捗
+                  @if (tasksService.progressFilter) {
+                    <span class="progress-filter-icon">●</span>
+                  }
+                </button>
+                @if (tasksService.isProgressFilterOpen) {
+                  <div class="th-filter-menu">
+                    <button type="button" (click)="tasksService.selectProgress(null)">すべて</button>
+                    <button type="button" (click)="tasksService.selectProgress('未着手')">未着手</button>
+                    <button type="button" (click)="tasksService.selectProgress('進行中')">進行中</button>
+                    <button type="button" (click)="tasksService.selectProgress('保留')">保留</button>
+                    <button type="button" (click)="tasksService.selectProgress('完了')">完了</button>
+                  </div>
+                }
+              </th>
+              <th class="filter-th task-table-column-priority">
+                <button class="th-filter-btn" (click)="tasksService.togglePriorityFilter()">
+                  優先度
+                  @if (tasksService.priorityFilter) {
+                    <span class="priority-filter-icon">●</span>
+                  }
+                </button>
+                @if (tasksService.isPriorityFilterOpen) {
+                  <div class="th-filter-menu">
+                    <button type="button" (click)="tasksService.selectPriority(null)">すべて</button>
+                    <button type="button" (click)="tasksService.selectPriority('高')">高</button>
+                    <button type="button" (click)="tasksService.selectPriority('中')">中</button>
+                    <button type="button" (click)="tasksService.selectPriority('低')">低</button>
+                    <button type="button" (click)="tasksService.selectPriority('未設定')">未設定</button>
+                  </div>
+                }
+              </th>
             </tr>
           </thead>
           <tbody>
-            @for (task of getNotDoneTasks(); track task.id) {
+            @for (task of displayTasks('notDone'); track task.id) {
               <tr
                 (click)="openTaskModal('task-edit', task)"
                 [ngClass]="getDueDateStatus(task.dueDate, task.status)"
@@ -95,7 +142,7 @@
       </div>
       <div class="done-task-container">
         <h3>完了したタスク</h3>
-        @for (task of getDoneTasks(); track task.id) {
+        @for (task of displayTasks('done'); track task.id) {
           <div class="done-task-table-wrapper">
             <table class="task-table">
               <tbody>
@@ -121,35 +168,63 @@
   } @else if (tasksService.displayFormat === 'board') {
     <!-- ボード -->
     <div class="board">
-      <div class="board-columns">
-        <div class="board-column">
+      <div class="board-columns" cdkDropListGroup>
+        <div
+          class="board-column"
+          id="未着手"
+          cdkDropList
+          cdkDropListSortingDisabled
+          [cdkDropListData]="tasksService.todoTasks()"
+          (cdkDropListDropped)="dropTask($event)"
+        >
           <p class="board-column-title">未着手</p>
-          @for (task of tasksService.getTasksByStatus('未着手'); track task.id) {
-            <div class="board-card" (click)="openTaskModal('task-edit', task)">
+          @for (task of tasksService.todoTasks(); track task.id) {
+            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
               <p class="board-card-title">{{ task.title }}</p>
             </div>
           }
         </div>
-        <div class="board-column">
+        <div
+          class="board-column"
+          id="進行中"
+          cdkDropList
+          cdkDropListSortingDisabled
+          [cdkDropListData]="tasksService.inProgressTasks()"
+          (cdkDropListDropped)="dropTask($event)"
+        >
           <p class="board-column-title">進行中</p>
-          @for (task of tasksService.getTasksByStatus('進行中'); track task.id) {
-            <div class="board-card" (click)="openTaskModal('task-edit', task)">
+          @for (task of tasksService.inProgressTasks(); track task.id) {
+            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
               <p class="board-card-title">{{ task.title }}</p>
             </div>
           }
         </div>
-        <div class="board-column">
+        <div
+          class="board-column"
+          id="保留"
+          cdkDropList
+          cdkDropListSortingDisabled
+          [cdkDropListData]="tasksService.onHoldTasks()"
+          (cdkDropListDropped)="dropTask($event)"
+        >
           <p class="board-column-title">保留</p>
-          @for (task of tasksService.getTasksByStatus('保留'); track task.id) {
-            <div class="board-card" (click)="openTaskModal('task-edit', task)">
+          @for (task of tasksService.onHoldTasks(); track task.id) {
+            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
               <p class="board-card-title">{{ task.title }}</p>
             </div>
           }
         </div>
-        <div class="board-column">
+        <div
+          class="board-column"
+          id="完了"
+          cdkDropList
+          cdkDropListSortingDisabled
+          [cdkDropListData]="tasksService.doneTasks()"
+          (cdkDropListDropped)="dropTask($event)"
+        >
           <p class="board-column-title">完了</p>
-          @for (task of tasksService.getTasksByStatus('完了'); track task.id) {
-            <div class="board-card" (click)="openTaskModal('task-edit', task)">
+          @for (task of tasksService.doneTasks(); track task.id) {
+            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
               <p class="board-card-title">{{ task.title }}</p>
             </div>
           }
@@ -227,7 +302,7 @@
     flex: 1;
     min-height: 0;
     width: 100%;
-    overflow-y: auto;
+    overflow: visible;
     box-sizing: border-box;
   }
   .display-switch-btn {
@@ -263,15 +338,15 @@
     justify-content: center;
     box-sizing: border-box;
   }
-  /* .toolbar-btn {
-    padding: 0 14px;
-  }
   .clear-btn {
-    font-size: 16px;
-    line-height: 1;
-  } */
-  .toolbar-btn:hover,
+    background-color: #1b5214;
+    color: white;
+  }
   .clear-btn:hover {
+    color: #1b5214;
+    background-color: rgb(157, 199, 161);
+  }
+  .toolbar-btn:hover {
     background: #ececec;
   }
   .toolbar-btn.active {
@@ -309,62 +384,116 @@
     width: 100%;
     height: 100%;
     min-height: 0;
-    overflow-x: auto;
-    overflow-y: auto;
-    background: white;
-    border-top: 1px solid #ddd;
+    overflow: visible;
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   }
   .task-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     table-layout: fixed;
     font-size: 14px;
-    color: #222;
+    color: #1a1a1a;
   }
   .task-table td,
   .task-table th {
     font-size: 14px;
   }
   .task-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
     text-align: left;
-    font-weight: 500;
-    color: #666;
-    padding: 12px 10px;
-    border-bottom: 1px solid #ddd;
-    border-right: 1px solid #eee;
-  }
-  .task-table thead th:last-child {
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    color: #5c5c5c;
+    padding: 10px 12px;
+    background: #f4f6f8;
+    border-bottom: 1px solid #e0e4e8;
     border-right: none;
+    box-shadow: 0 1px 0 #e0e4e8;
+  }
+  .task-table thead th.task-table-column-checkbox {
+    text-align: center;
+  }
+  .filter-th {
+    position: relative;
+    z-index: 3;
+  }
+  .th-filter-btn {
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 14px;
+    color: #666;
+    font: inherit;
+    border-radius: 4px;
+  }
+  .th-filter-btn:hover {
+    background-color: #f0f0f0;
+  }
+  .th-filter-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 6px;
+    min-width: 100px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  }
+  .th-filter-menu button {
+    display: block;
+    width: 100%;
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+
+  .th-filter-menu button:hover {
+    background-color: #f0f0f0;
   }
   .task-table-column-checkbox {
-    width: 20px;
+    width: 44px;
   }
   .task-table-column-title {
-    min-width: 40%;
+    width: auto;
+    min-width: 0;
   }
   .task-table-column-due-date {
-    width: 110px;
+    min-width: 180px;
+    width: 22%;
   }
   .task-table-column-status {
-    width: 80px;
+    width: 88px;
   }
   .task-table-column-priority {
-    width: 50px;
+    width: 100px;
   }
   .task-table tbody tr {
     cursor: pointer;
   }
   .task-table tbody tr:hover {
-    background-color: #f0f0f0;
+    background-color: #f7faf7;
   }
   .task-table tbody td {
-    padding: 10px 10px;
-    border-bottom: 1px solid #eee;
-    border-right: 1px solid #ddd;
+    padding: 12px 12px;
+    border-bottom: 1px solid #eef0f3;
+    border-right: none;
     vertical-align: middle;
   }
-  .task-table tbody td:last-child {
-    border-right: none;
+  .task-table tbody td:first-child {
+    text-align: center;
   }
   .done-task-container {
     display: flex;
@@ -373,8 +502,14 @@
   .overdue {
     background-color: rgb(231, 158, 158);
   }
+  .task-table tbody tr.overdue:hover {
+    background-color: rgb(220, 145, 145);
+  }
   .near {
     background-color: rgb(247, 247, 163);
+  }
+  .task-table tbody tr.near:hover {
+    background-color: rgb(236, 236, 140);
   }
 
   /* ボード */
@@ -387,42 +522,79 @@
     overflow-x: auto;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    padding: 12px 4px 16px;
+    background: #f0f3f1;
+    border-radius: 10px;
+    border: 1px solid #e8e8e8;
   }
   .board-columns {
     display: flex;
-    gap: 16px;
-    align-items: flex-start;
+    gap: 14px;
+    align-items: stretch;
     width: max-content;
-    padding: 0 12px 12px;
+    min-height: min(360px, 55vh);
+    padding: 4px 12px 8px;
     box-sizing: border-box;
   }
   .board-column {
-    /* flex: 0 0 auto; */
-    width: 200px;
+    width: 272px;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     gap: 10px;
-  }
-  .board-column-title,
-  .board-card {
-    background-color: #f5f5f5;
-    padding: 12px;
-    border-radius: 8px;
+    padding: 12px 10px 14px;
+    background: #e4e9e5;
+    border-radius: 12px;
+    border: 1px solid #d5dcd6;
     box-sizing: border-box;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   }
   .board-column-title {
-    font-size: 20px;
-    font-weight: bold;
+    margin: 0 0 4px;
+    padding: 6px 4px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #3d523f;
+    border-bottom: 1px solid #c9d1ca;
+    box-sizing: border-box;
+    background: transparent;
+    border-radius: 0;
   }
   .board-card {
     cursor: pointer;
+    padding: 12px 12px;
+    background: #fff;
+    border: 1px solid #e0e4e8;
+    border-radius: 10px;
+    box-sizing: border-box;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    /* transform は CDK がドラッグ中に付けるためトランジションに含めない（カーソル遅れの主因） */
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
   }
   .board-card:hover {
-    background-color: #e0e0e0;
+    border-color: #b8c9b9;
+    box-shadow: 0 4px 14px rgba(27, 82, 20, 0.12);
+    transform: translateY(-1px);
+  }
+  .board-card:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  .board-card.cdk-drag-preview {
+    opacity: 0.85;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  }
+  .board-card.cdk-drag-placeholder {
+    opacity: 0.25;
   }
   .board-card-title {
     font-size: 14px;
-    margin: 6px 0;
+    line-height: 1.45;
+    margin: 0;
+    color: #1a1a1a;
+    line-clamp: 4;
+    overflow: hidden;
   }
 
   /* カレンダー */

@@ -1,4 +1,4 @@
-import { Injectable, signal, inject } from '@angular/core';
+import { Injectable, signal, inject, computed } from '@angular/core';
 import {
     getMainTasks, 
     getTask,
@@ -8,6 +8,7 @@ import {
 import { FilterKey, SortKey, Task, initialTask } from '../types/task';
 import { AuthStateService } from './auth-state.service';
 import { AddNotificationInput } from '../types/notification';
+import { User } from '../types/user';
 
 @Injectable({
     providedIn: 'root'
@@ -27,26 +28,25 @@ export class TasksService {
         id: '',
         ...initialTask,
         createdAt: '',
+        assignableUsers: [],
         comments: [],
         subTasks: [],
         hierarchyTask: [],
         originalTitle: '',
     };
+    assignableUsers = signal<User[]>([]);
 
     // サブタスク
     subTasks: Task[] = [];
     subTaskHierarchy: Task[] = [];
 
-    // ソート・フィルター
-    sortKey: SortKey = null;
-    filterKey: FilterKey = null;
-
     setTasks(tasks: Task[]) {
         this.tasks.set(tasks);
     }
 
-    clearTasks() {
+    async clearTasks() {
         this.tasks.set([]);
+        await this.loadMainTasks();
     }
 
     addTask(task: Task) {
@@ -65,6 +65,19 @@ export class TasksService {
         );
     }
 
+    todoTasks = computed(() =>
+        this.tasks().filter(task => task.status === '未着手')
+    );
+    inProgressTasks = computed(() =>
+        this.tasks().filter(task => task.status === '進行中')
+    );
+    onHoldTasks = computed(() =>
+        this.tasks().filter(task => task.status === '保留')
+    );
+    doneTasks = computed(() =>
+        this.tasks().filter(task => task.status === '完了')
+    );
+
     // タスクを読み込む
     async loadMainTasks() {
         try {
@@ -76,25 +89,125 @@ export class TasksService {
         }
     }
     
-    // 未完了のタスクを取得
-    getNotDoneTasks() {
-        let tasks = this.tasks().filter(task => task.status !== '完了');
+    // ソート
+    sortKey: SortKey = null;
+    filterKey: FilterKey = null;
+
+    // フィルター
+    priorityFilter: '高' | '中' | '低' | '未設定' | null = null;
+    isPriorityFilterOpen: boolean = false;
+
+    // 優先度
+    togglePriorityFilter() {
+      this.isPriorityFilterOpen = !this.isPriorityFilterOpen;
+    }
+    selectPriority(value: '高' | '中' | '低' | '未設定' | null) {
+      this.priorityFilter = value;
+      this.isPriorityFilterOpen = false;
+    }
+    clearPriorityFilter() {
+      this.priorityFilter = null;
+    }
+    // 進捗
+    progressFilter: '未着手' | '進行中' | '保留' | '完了' | null = null;
+    isProgressFilterOpen: boolean = false;
+    toggleProgressFilter() {
+      this.isProgressFilterOpen = !this.isProgressFilterOpen;
+    }
+    selectProgress(value: '未着手' | '進行中' | '保留' | '完了' | null) {
+      this.progressFilter = value;
+      this.isProgressFilterOpen = false;
+    }
+    clearProgressFilter() {
+      this.progressFilter = null;
+    }
+    // 期日
+    dueDateFilter: '今日' | '明日' | '未設定' | null = null;
+    isDueDateFilterOpen: boolean = false;
+    toggleDueDateFilter() {
+      this.isDueDateFilterOpen = !this.isDueDateFilterOpen;
+    }
+    selectDueDate(value: '今日' | '明日' | '未設定' | null) {
+      this.dueDateFilter = value;
+      this.isDueDateFilterOpen = false;
+    }
+    clearDueDateFilter() {
+      this.dueDateFilter = null;
+    }
+
+    // 画面に表示するタスクを取得
+    getDisplayTasks(status: 'notDone' | 'done') {
+        // チームタスク、プロジェクトタスクは表示しない
+        let tasks = this.tasks().filter(task => task.projectId === null && task.teamId === null);
+        if(status === 'notDone') {
+            tasks = tasks.filter(task => task.status !== '完了');
+        } else {
+            tasks = tasks.filter(task => task.status === '完了');
+        }
+
+        // フィルター
+        if(this.priorityFilter) {
+            if(this.priorityFilter === '未設定') {
+                tasks = tasks.filter(task => task.priority === null);
+            } else {
+                tasks = tasks.filter(task => task.priority === this.priorityFilter);
+            }
+        }
+        if(this.progressFilter) {
+            tasks = tasks.filter(task => task.status === this.progressFilter);
+        }
+        if(this.dueDateFilter) {
+            if(this.dueDateFilter === '未設定') {
+                tasks = tasks.filter(task => task.dueDate === null);
+            } else {
+                tasks = tasks.filter(task => task.dueDate === this.dueDateFilter);
+            }
+        }
+
+        // ソート
         if(this.sortKey) {
             tasks.sort((a, b) => {
                 if(this.sortKey === 'dueDate') {
                     const aTime = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
                     const bTime = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
                     return aTime - bTime;
+                } else if (this.sortKey === 'createdAt') {
+                    const aTime = this.getTimeValue(a.createdAt);
+                    const bTime = this.getTimeValue(b.createdAt);
+                    return bTime - aTime;
+                } else if (this.sortKey === 'updatedAt') {
+                //     const aTime = a.updatedAt
+                //     ? new Date(a.updatedAt).getTime()
+                //     : 0;
+          
+                //   const bTime = b.updatedAt
+                //     ? new Date(b.updatedAt).getTime()
+                //     : 0;
+          
+                //   return bTime - aTime;
                 }
                 return 0;
             });
         }
         return tasks;
     }
-    // 完了したタスクを取得
-    getDoneTasks() {
-        return this.tasks().filter(task => task.status === '完了');
-    }
+    getTimeValue(value: any): number {
+        if (!value) return 0;
+      
+        // Firestore Timestamp
+        if (typeof value.toDate === 'function') {
+          return value.toDate().getTime();
+        }
+      
+        // { seconds, nanoseconds } 型っぽいオブジェクト
+        if (typeof value.seconds === 'number') {
+          return value.seconds * 1000;
+        }
+      
+        // string / Date に一応対応
+        const time = new Date(value).getTime();
+        return Number.isNaN(time) ? 0 : time;
+      }
     // 状態別のタスク取得
     getTasksByStatus(status: string) {
         return this.tasks().filter(task => task.status === status);

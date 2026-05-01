@@ -1,19 +1,22 @@
-import { Component, inject, OnInit, effect } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { TasksService } from '../../services/tasks.service';
 import { CommonModule } from '@angular/common';
 import { ModalService } from '../../services/modal.service';
-import { FilterKey, SortKey } from '../../types/task';
+import { AddTaskInput, FilterKey, SortKey, Task } from '../../types/task';
 import { AuthStateService } from '../../services/auth-state.service';
 import { AuthService } from '../../services/auth.service';
+import { CdkDragDrop } from '@angular/cdk/drag-drop';
+import { DragDropModule } from '@angular/cdk/drag-drop';
+import { updateTask } from '../../firestore';
 
 @Component({
     selector: 'app-tasks',
     templateUrl: './tasks.component.html',
     standalone: true,
-    imports: [CommonModule],
+    imports: [CommonModule, DragDropModule],
 })
 
-export class TaskComponent implements OnInit {
+export class TaskComponent {
   modalService = inject(ModalService);
   tasksService = inject(TasksService);
   authState = inject(AuthStateService);
@@ -48,6 +51,31 @@ export class TaskComponent implements OnInit {
     this.modalService.open(type, task);
   }
 
+  async dropTask(event: CdkDragDrop<Task[]>) {
+    if(event.previousContainer === event.container) {
+      return;
+    }
+    const movedTask = event.previousContainer.data[event.previousIndex];
+    const newStatus = event.container.id as Task['status'];
+
+    this.tasksService.tasks.update(tasks =>
+      tasks.map(task =>
+        task.id === movedTask.id ? { ...task, status: newStatus } : task
+      )
+    );
+
+    // Firestoreに更新
+    try {
+      const inputTask: AddTaskInput = {
+        ...movedTask,
+        status: newStatus,
+      }
+      await updateTask(movedTask.id, inputTask);
+    } catch (error) {
+      console.error("タスクステータス更新失敗: ", error);
+    }
+  }
+
   // タスク選択
   toggleTaskSelection(taskId: string) {
       // if(this.selectedTaskIds.includes(taskId)) {
@@ -70,11 +98,9 @@ export class TaskComponent implements OnInit {
       }
   }
 
-  getNotDoneTasks() {
-    return this.tasksService.getNotDoneTasks();
-  }
-  getDoneTasks() {
-    return this.tasksService.getDoneTasks();
+  // 画面に表示するタスク
+  displayTasks(status: 'notDone' | 'done') {
+    return this.tasksService.getDisplayTasks(status);
   }
 
   // ソート・フィルター
@@ -111,6 +137,19 @@ export class TaskComponent implements OnInit {
     this.isSortMenuOpen = false;
     this.isFilterMenuOpen = false;
   }
+  getSortLabel(sortKey: SortKey) {
+    switch(sortKey) {
+      case 'dueDate':
+        return '期日';
+      case 'createdAt':
+        return '作成日';
+      case 'updatedAt':
+        return '最終変更日';
+      default:
+        return '';
+    }
+  }
+
 
   // 期限の状態を取得
   getDueDateStatus(dueDate: string | null, taskStatus: string) {
