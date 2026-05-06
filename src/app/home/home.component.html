@@ -3,15 +3,6 @@
     <button class="menu-button" type="button" (click)="toggleSidebar()">
       <span></span><span></span><span></span>
     </button>
-    <div class="search-container">
-      <input
-        type="text"
-        [(ngModel)]="searchQuery"
-        placeholder="検索"
-        (blur)="resetSearchTasks()"
-      />
-      <button class="search-btn" type="button" (click)="searchTasks()">検索する</button>
-    </div>
     @if (authState.isLoggedIn) {
       <button class="login-btn" type="button">
         <p class="login-text" (click)="onLogout()">ログアウト</p>
@@ -35,17 +26,13 @@
           routerLink="/home/projects" routerLinkActive="active">プロジェクト</a>
           <a class="sidebar-menu-btn" 
           (click)="tasksService.clearTasks()"
-          routerLink="/home/inbox" routerLinkActive="active">受信トレイ</a>
-          <a class="sidebar-menu-btn" 
-          (click)="tasksService.clearTasks()"
           routerLink="/home/teams" routerLinkActive="active">チーム</a>
           <a class="sidebar-menu-btn" 
           (click)="tasksService.clearTasks()"
-          routerLink="/home/goals" routerLinkActive="active">ゴール</a>
+          routerLink="/home/inbox" routerLinkActive="active">受信トレイ</a>
           <a class="sidebar-menu-btn" 
           (click)="tasksService.clearTasks()"
-          routerLink="/home/search" routerLinkActive="active">検索</a>
-          <button class="sidebar-menu-btn" type="button" (click)="addField('projectId', null)">ドキュメント追加</button>
+          routerLink="/home/goals" routerLinkActive="active">ゴール</a>
         </div>
       </div>
       <div class="profile" routerLink="/profile">
@@ -149,7 +136,7 @@
             class="edit-task-name-input"
             [(ngModel)]="tasksService.editingTask.title"
             >
-            <div class="edit-task-item edit-task-status">
+            <div class="edit-task-item">
               <p class="edit-label">担当者</p>
               <select name="assignedUid" id="assignedUid-select"
               [(ngModel)]="tasksService.editingTask.assignedUid">
@@ -159,21 +146,21 @@
                 }
               </select>
             </div>
-            <div class="edit-task-item edit-task-start-date">
+            <div class="edit-task-item">
               <p class="edit-label">開始日</p>
               <input type="date"
                class="edit-task-start-date-input"
                [(ngModel)]="tasksService.editingTask.startDate"
                >
             </div>
-            <div class="edit-task-item edit-task-due-date">
+            <div class="edit-task-item">
               <p class="edit-label">期日</p>
               <input type="date"
               class="edit-task-due-date-input"
               [(ngModel)]="tasksService.editingTask.dueDate"
               >
             </div>
-            <div class="edit-task-item edit-task-status">
+            <div class="edit-task-item">
               <p class="edit-label">ステータス</p>
               <select name="status" id="status-select"
               [(ngModel)]="tasksService.editingTask.status"
@@ -184,7 +171,7 @@
                 <option value="完了">完了</option>
               </select>
             </div>
-            <div class="edit-task-item edit-task-priority">
+            <div class="edit-task-item">
               <p class="edit-label">優先度</p>
               <select name="priority" id="priority-select"
               [(ngModel)]="tasksService.editingTask.priority"
@@ -250,6 +237,25 @@
           <button class="edit-task-delete-btn" type="button" (click)="deleteTask(modalState.data.id)">削除</button>
         </div>
       </div>
+    } @else if (modalState.type === 'project-edit') {
+      <div class="modal" (click)="closeModal()">
+        <div class="modal-form" (click)="$event.stopPropagation()">
+          <div class="modal-top">
+            <p>プロジェクトを編集</p>
+            <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
+          </div>
+          <div class="modal-body">
+            <input type="text" [(ngModel)]="modalState.data.name" placeholder="プロジェクト名を入力してください" />
+            <select name="visibility" id="visibility-select" [(ngModel)]="modalState.data.visibility">
+              <option value="private">非公開</option>
+              <option value="members">公開</option>
+            </select>
+            <input type="text" [(ngModel)]="modalState.data.description" placeholder="プロジェクトの説明を入力してください" />
+            <button class="project-edit-save-btn" type="button" (click)="saveProjectEdit(modalState.data)">保存</button>
+            <button class="project-edit-delete-btn" type="button" (click)="deleteProject(modalState.data)">削除</button>
+          </div>
+        </div>
+      </div>
     } @else if (modalState.type === 'project-invite') {
       <div class="modal" (click)="closeModal()">
         <div class="modal-form" (click)="$event.stopPropagation()">
@@ -261,7 +267,7 @@
             <div class="modal-content-item">
               <p class="modal-content-label">メールで招待</p>
               <div class="modal-content-email-input-container">
-                <input type="email" [(ngModel)]="inviteEmailOrUserName" placeholder="メールアドレスを入力してください" />
+                <input type="email" [(ngModel)]="inviteEmail" placeholder="メールアドレスを入力してください" />
                 <button class="project-invite-btn" type="button" (click)="invite('project', modalState.data.id)">招待</button>
               </div>
             </div>
@@ -277,12 +283,12 @@
           </div>
           <div class="modal-body">
             <div class="modal-project-member-list">
-              @for (memberId of modalState.data.memberIds; track memberId) {
+              @for (member of modalState.data.projectMembers; track member.id) {
                 <div class="modal-project-member">
                   <button class="member-btn">
-                    <p>{{ memberId }}</p>
+                    <p>{{ member.user?.userName }}</p>
                   </button>
-                  <button class="member-remove-btn" (click)="deleteMember(memberId, modalState.data.id)">
+                  <button class="member-remove-btn" (click)="deleteProjectMember(member.userId, modalState.data.id)">
                     削除
                   </button>
                 </div>
@@ -309,11 +315,22 @@
             <p>通知内容</p>
             <div class="modal-notification-body-wrapper">
               <p>{{ authState.userName }}から{{ modalState.data.message }}</p>
-              @if (modalState.data.type === 'project-invite') {
+              @if (modalState.data.type === 'invite') {
                 @if (modalState.data.status === 'pending') {
-                  <div class="modal-notification-project-invite-wrapper">
-                    <button (click)="acceptInvite(modalState.data.sourceId)">承諾する</button>
-                    <button (click)="declineInvite(modalState.data.sourceId)">拒否する</button>
+                  <div class="modal-notification-invite-wrapper">
+                    <button (click)="acceptInvite(modalState.data.sourceId, 'project')">承諾する</button>
+                    <button (click)="declineInvite(modalState.data.sourceId, 'project')">拒否する</button>
+                  </div>
+                } @else if (modalState.data.status === 'accepted') {
+                  <p>招待はすでに承諾されています。</p>
+                } @else if (modalState.data.status === 'declined') {
+                  <p>招待はすでに拒否されています。</p>
+                }
+              } @else if (modalState.data.type === 'team-invite') {
+                @if (modalState.data.status === 'pending') {
+                  <div class="modal-notification-invite-wrapper">
+                    <button (click)="acceptInvite(modalState.data.sourceId, 'team')">承諾する</button>
+                    <button (click)="declineInvite(modalState.data.sourceId, 'team')">拒否する</button>
                   </div>
                 } @else if (modalState.data.status === 'accepted') {
                   <p>招待はすでに承諾されています。</p>
@@ -453,8 +470,8 @@
                 <p>{{ member.user?.userName }}</p>
               </div>
             }
-            <input type="text" [(ngModel)]="inviteEmailOrUserName" placeholder="メールアドレスを入力してください" />
-            <button class="modal-footer-btn">
+            <input type="text" [(ngModel)]="inviteEmail" placeholder="メールアドレスを入力してください" />
+            <button class="modal-footer-btn" (click)="invite('team', modalState.data[0].teamId ?? '')">
               招待
             </button>
           </div>
@@ -673,6 +690,10 @@
     flex: 1;
     overflow-y: auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
   }
   .modal-footer {
   flex-shrink: 0;
@@ -726,77 +747,307 @@
     font-size: 12px;
   }
   .edit-task-hierarchy-btn {
-    background: none;
-    border: none;
+    background: #f4f6f4;
+    border: 1px solid #e0e6e1;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #2d3f2f;
     cursor: pointer;
   }
   .edit-task-hierarchy-btn:hover {
-    background-color: #f0f0f0;
+    background: #e8eee9;
+    border-color: #c9d4ca;
   }
   .edit-task-name-input {
-    font-size: 20px;
-    border: none;
+    font-size: 18px;
+    font-weight: 600;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    width: 100%;
+    box-sizing: border-box;
+    color: #1a1a1a;
+    background: #fafafa;
+  }
+  .edit-task-name-input:focus {
+    outline: none;
+    border-color: #1b5214;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(27, 82, 20, 0.12);
   }
   .edit-task-item {
     display: flex;
-    gap: 30px;
+    flex-wrap: wrap;
     align-items: center;
+    gap: 8px 14px;
   }
   .edit-label {
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #555;
+    margin: 0;
+    min-width: 88px;
   }
   .edit-task-memo-input {
-    border: none;
+    flex: 1;
+    min-width: 160px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    box-sizing: border-box;
+    background: #fff;
+  }
+  .edit-task-memo-input:focus {
+    outline: none;
+    border-color: #1b5214;
+  }
+  .edit-task-item select,
+  .edit-task-item input[type='date'],
+  .edit-task-item input[type='text']:not(.edit-task-name-input):not(.edit-task-subtask-input) {
+    flex: 1;
+    min-width: 160px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    background: #fff;
+    box-sizing: border-box;
+    color: #222;
+  }
+  .edit-task-item select:focus,
+  .edit-task-item input[type='date']:focus,
+  .edit-task-item input[type='text']:focus {
+    outline: none;
+    border-color: #1b5214;
   }
   .edit-task-delete-btn {
     align-self: center;
     margin-top: 20px;
-    color: red;
-    border: none;
-    background: none;
+    color: #b3261e;
+    border: 1px solid #f0c4c0;
+    background: #fff8f7;
+    border-radius: 8px;
+    padding: 8px 14px;
     cursor: pointer;
+    font-size: 14px;
   }
   .edit-task-delete-btn:hover {
-    text-decoration: underline;
+    background: #ffefee;
+    border-color: #e8a8a2;
   }
   .edit-task-subtasks-container {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
+    gap: 8px;
   }
   .edit-task-subtask-add-btn {
-    font-size: 16px;
-    font-weight: bold;
-    padding: 5px 8px;
-    background: none;
-    border: none;
+    font-size: 18px;
+    line-height: 1;
+    font-weight: 600;
+    padding: 6px 10px;
+    background: #f4f6f4;
+    border: 1px solid #d5dcd6;
+    border-radius: 8px;
     cursor: pointer;
+    color: #1b5214;
   }
   .edit-task-subtask-add-btn:hover {
-    background-color: #f0f0f0;
+    background: #e8eee9;
   }
   .edit-task-subtask-item {
-    min-width: 200px;
-    height: 30px;
-    background: #999;
-    border: none;
+    min-width: 0;
+    flex: 1 1 100%;
+    max-width: 100%;
+    min-height: 36px;
+    background: #f8f9f8;
+    border: 1px solid #e4e8e5;
+    border-radius: 8px;
     cursor: pointer;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: 0 4px 0 10px;
   }
   .edit-task-subtask-item:hover {
-    background-color: #e0e0e0;
+    border-color: #c9d4ca;
+    background: #f0f4f1;
   }
   .edit-task-subtask-input {
-    margin-left: 20px;
-    width: 100px;
+    margin-left: 0;
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    height: 34px;
     border: none;
+    background: transparent;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  .edit-task-subtask-input:focus {
+    outline: none;
   }
   .edit-task-subtasks-value-container {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    flex: 1 1 200px;
+    min-width: 0;
   }
-  .edit-task-save-btn, .edit-task-reset-btn {
+  .edit-task-save-btn,
+  .edit-task-reset-btn {
     width: fit-content;
     margin: 0 auto;
+  }
+
+  /* タスク編集モーダル（シンプル・フラット） */
+  .edit-task-modal .edit-task-form {
+    width: min(520px, 92vw);
+    max-width: 520px;
+    height: auto;
+    max-height: 88vh;
+    border-radius: 12px;
+    border: 1px solid #e6e6e6;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+  }
+  .edit-task-modal .modal-top {
+    padding: 14px 16px;
+    border-bottom: 1px solid #eee;
+    background: #fafafa;
+  }
+  .edit-task-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #222;
+    letter-spacing: 0.02em;
+  }
+  .edit-task-close-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 22px;
+    line-height: 1;
+    color: #666;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .edit-task-close-btn:hover {
+    background: #eee;
+    color: #111;
+  }
+  .edit-task-modal .modal-body.edit-task-body {
+    padding: 16px 18px 8px;
+  }
+  .edit-task-modal .edit-task-hierarchy-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .edit-task-modal .edit-task-name-input {
+    margin-bottom: 16px;
+    background: #fff;
+  }
+  .edit-task-modal .edit-task-item {
+    width: 100%;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #f0f0f0;
+    box-sizing: border-box;
+  }
+  .edit-task-modal .edit-task-item:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+  .edit-task-modal .edit-task-comments-container {
+    flex-basis: 100%;
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #f8f9f8;
+    border: 1px solid #ececec;
+    box-sizing: border-box;
+  }
+  .edit-task-modal .edit-task-comment-content {
+    margin: 0 0 8px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333;
+  }
+  .edit-task-modal .edit-task-comment-delete-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    color: #666;
+    cursor: pointer;
+  }
+  .edit-task-modal .edit-task-comment-delete-btn:hover {
+    background: #f5f5f5;
+    color: #b3261e;
+    border-color: #e0c4c4;
+  }
+  .edit-task-modal .edit-task-comment-add-btn {
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid #d5dcd6;
+    border-radius: 8px;
+    background: #fff;
+    color: #2d3f2f;
+    cursor: pointer;
+  }
+  .edit-task-modal .edit-task-comment-add-btn:hover {
+    background: #f4f6f4;
+  }
+  .edit-task-modal .edit-task-reset-btn,
+  .edit-task-modal .edit-task-save-btn,
+  .edit-task-modal .edit-task-delete-btn {
+    width: auto;
+    margin: 0 16px;
+    align-self: stretch;
+    max-width: calc(100% - 32px);
+    box-sizing: border-box;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .edit-task-modal .edit-task-reset-btn {
+    margin-top: 12px;
+    background: #f5f5f5;
+    color: #444;
+    border: 1px solid #ddd;
+  }
+  .edit-task-modal .edit-task-reset-btn:hover {
+    background: #eee;
+  }
+  .edit-task-modal .edit-task-save-btn {
+    margin-top: 8px;
+    background: #1b5214;
+    color: #fff;
+    border: 1px solid #1b5214;
+  }
+  .edit-task-modal .edit-task-save-btn:hover {
+    background: #164a12;
+    border-color: #164a12;
+  }
+  .edit-task-modal .edit-task-delete-btn {
+    margin-top: 8px;
+    margin-bottom: 16px;
   }
 
   /* プロジェクト */

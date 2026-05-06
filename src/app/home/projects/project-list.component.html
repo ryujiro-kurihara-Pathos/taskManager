@@ -1,8 +1,8 @@
 <div class="projects-container">
-    <div class="project-header">
+    <header class="project-header">
         <p class="project-header-title">プロジェクト</p>
-        <button class="project-add-btn" (click)="openProjectAddModal()">プロジェクトを作成</button>
-    </div>
+        <button type="button" class="project-add-btn" (click)="openProjectAddModal()">プロジェクトを作成</button>
+    </header>
     <div class="project-main">
         <div class="project-search-wrapper">
             <input type="text" 
@@ -23,8 +23,8 @@
                         </div>
         
                         <div class="project-members">
-                            @for (memberId of project.memberIds; track memberId) {
-                                <div class="avatar">栗</div>
+                            @for (member of project.projectMembers; track member.id) {
+                                <div class="avatar">{{ member.user?.userName?.charAt(0) ?? '' }}</div>
                             }
                         </div>
                     
@@ -38,52 +38,71 @@
                 <input type="text" 
                 placeholder="プロジェクト名"
                 [(ngModel)]="newProjectName">
-                <button (click)="closeProjectAddModal()">×</button>
-                <button (click)="addProject()">作成</button>
+                <button type="button" (click)="closeProjectAddModal()">×</button>
+                <button type="button" (click)="addProject()">作成</button>
             </div>
         }
     </div>
 </div>
 
 <style>
+    .projects-container {
+        padding: 0 20px 24px;
+        /* max-width: 960px; */
+        margin: 0 auto;
+        box-sizing: border-box;
+    }
     .project-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 10px 20px;
+        padding: 16px 0;
         border-bottom: 1px solid #e0e0e0;
     }
     .project-header-title {
+        margin: 0;
         font-size: 20px;
-        font-weight: bold;
+        font-weight: 700;
     }
     .project-add-btn {
-        padding: 0 15px;
+        padding: 8px 16px;
         background-color: #4ea356;
         color: #fff;
         border: none;
         border-radius: 6px;
         cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
     }
     .project-add-btn:hover {
         background-color: #255c2b;
     }
+    .project-main {
+        padding-top: 8px;
+    }
     .project-search-wrapper {
-        width: 90%;
+        width: 100%;
         max-width: 600px;
         margin: 0 auto;
-        padding: 10px 0;
+        padding: 12px 0 8px;
     }
     .project-search-input {
         width: 100%;
-        padding: 10px 16px 10px 40px;
-        border-radius: 9999px;
-        border: 1px solid #b4b4b4;
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: 1px solid #c8ccc9;
         background-color: #f9fafb;
         box-sizing: border-box;
         font-size: 14px;
         outline: none;
-        transition: all 0.2s ease;
+        transition: border-color 0.2s ease, background-color 0.2s ease;
+    }
+    .project-search-input:focus {
+        border-color: #4ea356;
+        background-color: #fff;
+    }
+    .project-list-wrapper {
+        margin-top: 8px;
     }
     .project-list-header,
     .project-item {
@@ -93,21 +112,45 @@
         cursor: pointer;
     }
     .project-list-header {
-        border-bottom: 1px solid #e0e0e0;
+        padding: 10px 14px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: #5c5c5c;
+        background: #f4f6f8;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-sizing: border-box;
+        margin-bottom: 8px;
+    }
+    .project-list-header .right-align {
+        text-align: right;
+    }
+    .project-item-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 0 0;
     }
     .project-item {
-        border-bottom: 1px solid #e0e0e0;
-        padding-top: 8px;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 12px 14px;
         text-decoration: none;
-        color: #000;
+        color: #1a1a1a;
+        background: #fff;
+        box-sizing: border-box;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
     }
     .project-item:hover {
         background-color: #f9fafb;
+        border-color: #c8ccc9;
     }
     .project-name {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        font-weight: 600;
     }
     .project-members {
         display: flex;
@@ -125,7 +168,41 @@
     }
 
     .project-add-modal {
-        background-color: gray;
-        padding: 20px;
+        margin-top: 16px;
+        padding: 16px;
+        background-color: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+    }
+    .project-add-modal input {
+        flex: 1;
+        min-width: 160px;
+        padding: 8px 12px;
+        border: 1px solid #c8ccc9;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+    .project-add-modal button {
+        padding: 8px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        border: 1px solid #c8ccc9;
+        background: #f9fafb;
+    }
+    .project-add-modal button:last-of-type {
+        background: #4ea356;
+        color: #fff;
+        border-color: #4ea356;
+        font-weight: 500;
+    }
+    .project-add-modal button:last-of-type:hover {
+        background: #255c2b;
+        border-color: #255c2b;
     }
 </style>

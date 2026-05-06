@@ -17,7 +17,6 @@ import { User } from '../types/user';
 export class TasksService {
     tasks = signal<Task[]>([]);
     authState = inject(AuthStateService);
-
     // 表示形式
     displayFormat: 'list' | 'board' | 'calendar' = 'list';
 
@@ -28,6 +27,7 @@ export class TasksService {
         id: '',
         ...initialTask,
         createdAt: '',
+        updatedAt: '',
         assignableUsers: [],
         comments: [],
         subTasks: [],
@@ -46,6 +46,7 @@ export class TasksService {
 
     async clearTasks() {
         this.tasks.set([]);
+        this.displayFormat = 'list';
         await this.loadMainTasks();
     }
 
@@ -66,24 +67,28 @@ export class TasksService {
     }
 
     todoTasks = computed(() =>
-        this.tasks().filter(task => task.status === '未着手')
+        this.tasks().filter(task => task.projectId === null && task.teamId === null && task.status === '未着手')
     );
     inProgressTasks = computed(() =>
-        this.tasks().filter(task => task.status === '進行中')
+        this.tasks().filter(task => task.projectId === null && task.teamId === null && task.status === '進行中')
     );
     onHoldTasks = computed(() =>
-        this.tasks().filter(task => task.status === '保留')
+        this.tasks().filter(task => task.projectId === null && task.teamId === null && task.status === '保留')
     );
     doneTasks = computed(() =>
-        this.tasks().filter(task => task.status === '完了')
+        this.tasks().filter(task => task.projectId === null && task.teamId === null && task.status === '完了')
     );
 
     // タスクを読み込む
     async loadMainTasks() {
         try {
+            // タスクを取得
             const tasks = await getMainTasks(this.authState.uid);
+            // タスクを設定
             this.setTasks(tasks);
-            this.createTaskDeadlineNotification(tasks);
+
+            // 期日が近いタスクの通知を作成
+            await this.createTaskDeadlineNotification(tasks);
         } catch (error) {
             console.error('タスク読み込み失敗: ', error);
         }
@@ -157,10 +162,12 @@ export class TasksService {
             tasks = tasks.filter(task => task.status === this.progressFilter);
         }
         if(this.dueDateFilter) {
-            if(this.dueDateFilter === '未設定') {
+            if(this.dueDateFilter === '今日') {
+                tasks = tasks.filter(task => task.dueDate && this.isDueDateToday(task.dueDate));
+            } else if(this.dueDateFilter === '明日') {
+                tasks = tasks.filter(task => task.dueDate && this.isDueDateTomorrow(task.dueDate));
+            } else if(this.dueDateFilter === '未設定') {
                 tasks = tasks.filter(task => task.dueDate === null);
-            } else {
-                tasks = tasks.filter(task => task.dueDate === this.dueDateFilter);
             }
         }
 
@@ -267,6 +274,14 @@ export class TasksService {
         } catch (error) {
         console.error('期限が近いタスクの通知作成失敗: ', error);
         }
+    }
+    // 期日が今日かどうか
+    isDueDateToday(dueDate: string) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const due = new Date(dueDate);
+        due.setHours(0, 0, 0, 0);
+        return today.getTime() === due.getTime();
     }
     // 期日が明日かどうか
     isDueDateTomorrow(dueDate: string) {

@@ -1,18 +1,41 @@
+import { User } from "./user";
+
+// プロジェクト
 export type Project = {
     id: string;
     name: string;
     ownerId: string;
-    memberIds: string[];
     visibility: 'private' | 'members';
-    isArchived: boolean;
     description: string;
 
     createdAt: string;
+    updatedAt: string;
+    
+    teamId: string | null;
+    projectMembers: ProjectMember[] | null;
+}
+export type AddProjectInput = Omit<Project, 'id' | 'createdAt' | 'updatedAt'>;
 
-    teamIds: string[];
+// プロジェクトメンバー
+export type ProjectMember = {
+    id: string; // ドキュメントID
+
+    projectId: string; // プロジェクトID
+    userId: string; // ユーザーID
+    role: 'owner' | 'admin' | 'member'; // 役割
+
+    createdAt: string; // プロジェクトメンバー作成日時
+
+    user: User | null; // ユーザー情報
 }
 
-export type AddProjectInput = Omit<Project, 'id' | 'createdAt'>;
+export type AddProjectMemberInput = Omit<ProjectMember, 'id' | 'createdAt' | 'user'>;
+
+export const initialProjectMemberInput: AddProjectMemberInput = {
+    projectId: '',
+    userId: '',
+    role: 'member',
+};
 
 // export type ProjectInvite = {
 //     id: string;

@@ -4,9 +4,9 @@ import { AddTeamInput, initialTeamInput, Team } from '../../types/team';
 import {
     addTeam,
     addTeamMember,
-    getTeamMembersByUserId,
     getTeamsByIds,
     getTeamMembersByTeamId,
+    getTeamIdsByUserId,
 } from '../../firestore';
 import { AuthStateService } from '../../services/auth-state.service';
 import { FormsModule } from '@angular/forms';
@@ -92,7 +92,7 @@ export class TeamComponent {
         try {
             if(!uid) return [];
             // ユーザーIDが一致するteamIDを取得
-            const teamMemberIds = await getTeamMembersByUserId(uid);
+            const teamMemberIds = await getTeamIdsByUserId(uid);
             // teamIDからteamを取得
             const teams = await getTeamsByIds(teamMemberIds);
             return teams;

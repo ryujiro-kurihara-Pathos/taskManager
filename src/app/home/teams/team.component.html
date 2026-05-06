@@ -1,13 +1,15 @@
 <div class="team-container">
-    <div class="team-header">
+    <header class="team-header">
         <p class="team-header-title">チーム</p>
-    </div>
+    </header>
     <div class="team-body">
+        <div class="team-tool-row">
         <input type="text"
         [(ngModel)]="addingTeam.name"
         placeholder="チーム名を入力してください"
         >
-        <button (click)=addTeams()>チームを追加</button>
+        <button type="button" (click)="addTeams()">チームを追加</button>
+        </div>
         <div class="team-list">
             @for (team of teams(); track team.id) {
                 <a class="team-item" [routerLink]="['/home/teams', team.id]">
@@ -21,20 +23,82 @@
 <style>
     .team-container {
         width: 100%;
+        /* max-width: 960px; */
+        margin: 0 auto;
+        padding: 0 20px 24px;
         box-sizing: border-box;
     }
     .team-header {
-        padding: 10px 20px;
-        border-bottom: 1px solid #a1a39f;
-        margin-bottom: 24px;
+        padding: 16px 0;
+        border-bottom: 1px solid #e0e0e0;
     }
     .team-header-title {
         margin: 0;
         font-size: 20px;
-        font-weight: bold;
+        font-weight: 700;
     }
 
     .team-body {
         width: 100%;
+        padding-top: 8px;
+    }
+    .team-tool-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .team-tool-row input[type="text"] {
+        flex: 1;
+        min-width: 200px;
+        padding: 10px 14px;
+        border: 1px solid #c8ccc9;
+        border-radius: 8px;
+        background: #f9fafb;
+        font-size: 14px;
+        box-sizing: border-box;
+        outline: none;
+    }
+    .team-tool-row input[type="text"]:focus {
+        border-color: #4ea356;
+        background: #fff;
+    }
+    .team-tool-row button {
+        padding: 8px 16px;
+        background: #4ea356;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    .team-tool-row button:hover {
+        background: #255c2b;
+    }
+    .team-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .team-item {
+        display: block;
+        padding: 12px 14px;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        background: #fff;
+        text-decoration: none;
+        color: #1a1a1a;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+    .team-item:hover {
+        background: #f9fafb;
+        border-color: #c8ccc9;
+    }
+    .team-name {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
     }
 </style>

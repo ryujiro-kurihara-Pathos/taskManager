@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import {
     getComments,
@@ -9,10 +9,12 @@ import {
 } from '../firestore';
 import { Task } from '../types/task';
 import { TeamMember } from '../types/team';
+import { AuthStateService } from './auth-state.service';
 
 type ModalType =
 'task-edit' | 
 'task-add' | 
+'project-edit' |
 'project-invite' |
 'project-member-list' |
 'notification-detail' |
@@ -31,6 +33,8 @@ export interface ModalState {
 })
 
 export class ModalService {
+    authState = inject(AuthStateService);
+
     private modalStateSubject = new BehaviorSubject<ModalState>({
         isOpen: false,
         type: null,
@@ -153,8 +157,10 @@ export class ModalService {
     // 担当者候補の取得
     async getAssignableUsers(type: ModalType, task: Task) {
         if(type !== 'task-edit' && type !== 'team-task-detail') return [];
-        if(!task.teamId && !task.projectId) {
-            const user = await getUser(task.uid);
+
+        // 個人タスク
+        if(!task.projectId && !task.teamId) {
+            const user = this.authState.user();
             if(!user) return [];
             return [user];
         }

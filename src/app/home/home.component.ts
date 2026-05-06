@@ -16,12 +16,18 @@ import {
   deleteChildrenTask,
   invite,
   isAdmin,
-  deleteMember,
+  deleteProjectMember,
   acceptInvite,
-  addProjectMember,
-  getProjectIdFromProjectInviteId,
+  
   declineProjectInvite,
-  getProjectInviteStatus,
+  getInviteStatus,
+  updateProject,
+  getProjectMembers,
+  deleteProject,
+  deleteProjectAllMembers,
+  addProjectMember,
+  getTargetIdFromInviteId,
+  addTeamMember,
 } from '../firestore';
 import { AuthStateService } from '../services/auth-state.service';
 import { TasksService } from '../services/tasks.service';
@@ -31,6 +37,8 @@ import { ModalService, ModalState } from '../services/modal.service';
 import { logout } from '../auth';
 import { User } from '../types/user';
 import { AddInviteInput, initialInviteInput } from '../types/Invite';
+import { Project, AddProjectInput, ProjectMember, AddProjectMemberInput } from '../types/project';
+import { AddTeamMemberInput } from '../types/team';
 
 @Component({
   selector: 'app-home',
@@ -60,7 +68,7 @@ export class HomeComponent {
 
   // プロジェクト
   inviteInput: AddInviteInput = initialInviteInput;
-  inviteEmailOrUserName: string = '';
+  inviteEmail: string = '';
 
   searchQuery: string = '';
   searchedTasks: Task[] = [];
@@ -89,7 +97,7 @@ export class HomeComponent {
     if(type === 'task-edit' || type === 'team-task-detail') {
       this.tasksService.editingTask = { ...initialTask as Task };
     } else if(type === 'project-invite' || type === 'team-member-detail') {
-      this.inviteEmailOrUserName = '';
+      this.inviteEmail = '';
     }
     this.modalService.close();
   }
@@ -326,7 +334,7 @@ export class HomeComponent {
       const isInvited = await invite(
         type,
         targetId,
-        this.inviteEmailOrUserName,
+        this.inviteEmail,
         this.authState.user()?.email ?? '',
         this.authState.uid,
       );
@@ -341,43 +349,94 @@ export class HomeComponent {
     return memberId === this.authState.uid;
   }
   // メンバーを削除
-  async deleteMember(memberId: string, projectId: string) {
+  async deleteProjectMember(memberId: string, projectId: string) {
     try {
       // 管理者でないなら削除できない
       const isAdminUser = await isAdmin(this.authState.uid, projectId);
       if (!isAdminUser) return;
       // メンバーを削除
-      await deleteMember(memberId, projectId);
+      await deleteProjectMember(memberId, projectId);
       // 表示するメンバーを更新
-      this.modalState.data.memberIds = this.modalState.data.memberIds.filter((id: string) => id !== memberId);
+      this.modalState.data.projectMembers = this.modalState.data.projectMembers?.filter((member: ProjectMember) => member.id !== memberId);
     } catch (error) {
       console.error("メンバー削除失敗: ", error);
+    }
+  }
+  async saveProjectEdit(project: Project) {
+    try {
+      const updateProjectInput: AddProjectInput = {
+        name: project.name,
+        ownerId: project.ownerId,
+        visibility: project.visibility,
+        description: project.description,
+        teamId: project.teamId ?? null,
+        projectMembers: project.projectMembers ?? null,
+      }
+      await updateProject(project.id, updateProjectInput);
+      this.modalService.close();
+    } catch (error) {
+      console.error("プロジェクト編集保存失敗: ", error);
+    }
+  }
+  async deleteProject(project: Project) {
+    try {
+      // プロジェクトを削除
+      await deleteProject(project.id);
+
+      // プロジェクトメンバーを削除
+      await deleteProjectAllMembers(project.id);
+
+      // モーダルを閉じる
+      this.closeModal();
+
+      // プロジェクト一覧に戻る
+      this.router.navigate(['/home/projects']);
+    } catch (error) {
+      console.error("プロジェクト削除失敗: ", error);
     }
   }
 
   // 通知
   // 招待を承諾する
-  async acceptInvite(invitedId: string) {
+  async acceptInvite(invitedId: string, type: 'project' | 'team') {
     try {
       // 招待への承認がすでにある場合は承認できない
-      const status = await getProjectInviteStatus(invitedId);
+      const status = await getInviteStatus(invitedId);
       if (status !== 'pending') return;
 
       const uid = this.authState.uid;
       if (!uid) return;
-      const projectId = await getProjectIdFromProjectInviteId(invitedId);
-      if (!projectId) return;
+      const targetId = await getTargetIdFromInviteId(invitedId);
+      if (!targetId) return;
+
+      // 招待を承諾する
       await acceptInvite(invitedId, this.authState.uid);
-      await addProjectMember(projectId, this.authState.uid);
+
+      // membersに追加する
+      if(type === 'project') {
+        const addProjectMemberInput: AddProjectMemberInput = {
+          projectId: targetId,
+          userId: this.authState.uid,
+          role: 'member',
+        }
+        await addProjectMember(addProjectMemberInput);
+      } else if(type === 'team') {
+        const addTeamMemberInput: AddTeamMemberInput = {
+          teamId: targetId,
+          userId: this.authState.uid,
+          role: 'member',
+        }
+        await addTeamMember(addTeamMemberInput);
+      }
       this.closeModal();
     } catch (error) {
       throw error;
     }
   }
   // 招待を拒否する
-  async declineInvite(projectInvitedId: string) {
+  async declineInvite(projectInvitedId: string, type: 'project' | 'team') {
     try {
-      const status = await getProjectInviteStatus(projectInvitedId);
+      const status = await getInviteStatus(projectInvitedId);
       if (status !== 'pending') return;
 
       const uid = this.authState.uid;
@@ -392,7 +451,7 @@ export class HomeComponent {
   // 招待状況を取得する
   async getInviteStatus(projectInviteId: string) {
     try {
-      const status = await getProjectInviteStatus(projectInviteId);
+      const status = await getInviteStatus(projectInviteId);
       return status;
     } catch (error) {
       throw error;

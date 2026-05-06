@@ -29,6 +29,10 @@ export class TaskComponent {
   // カレンダー
   weekDates: Date[] = [];
   currentDate = new Date();
+  /** ガント行の高さ（getTaskTop と一致） */
+  readonly calendarRowHeightPx = 48;
+  /** ヘッダー列（曜日・日付）の下からタスク層までのオフセット（tasks.component.html の .task-layer top と一致） */
+  readonly calendarHeaderBandPx = 65;
 
   // メニュー
   isSortMenuOpen: boolean = false;
@@ -246,11 +250,22 @@ export class TaskComponent {
     const weekStart = this.formatDate(this.weekDates[0]);
     const weekEnd = this.formatDate(this.weekDates[6]);
   
-    return this.dummyTasks.filter(task => {
+    return this.tasksService.tasks().filter(task => {
+      if(!task.startDate || !task.dueDate) return false;
       return task.startDate <= weekEnd && task.dueDate >= weekStart;
     });
   }
-  getTaskStartIndex(task: { startDate: string; dueDate: string }): number {
+
+  /** 週内かつ一覧（未完了・フィルター）に載るタスク。カレンダー描画と行計算の単一ソース */
+  getCalendarWeekTasks(): Task[] {
+    const displayedIds = new Set(
+      this.displayTasks('notDone').map(t => t.id),
+    );
+    return this.getWeekTasks().filter(t => displayedIds.has(t.id));
+  }
+
+  getTaskStartIndex(task: Task): number {
+    if(!task.startDate) return 0;
     const weekStart = this.formatDate(this.weekDates[0]);
   
     if (task.startDate <= weekStart) {
@@ -259,11 +274,12 @@ export class TaskComponent {
   
     return this.weekDates.findIndex(date => this.formatDate(date) === task.startDate);
   }
-  getTaskLeftPercent(task: { startDate: string; dueDate: string }): number {
+  getTaskLeftPercent(task: Task): number {
     const startIndex = this.getTaskStartIndex(task);
     return (startIndex / 7) * 100;
   }
-  getTaskEndIndex(task: { startDate: string; dueDate: string }): number {
+  getTaskEndIndex(task: Task): number {
+    if(!task.dueDate) return 0;
     const weekEnd = this.formatDate(this.weekDates[6]);
   
     if (task.dueDate >= weekEnd) {
@@ -272,7 +288,7 @@ export class TaskComponent {
   
     return this.weekDates.findIndex(date => this.formatDate(date) === task.dueDate);
   }
-  getTaskWidthPercent(task: { startDate: string; dueDate: string }): number {
+  getTaskWidthPercent(task: Task): number {
     const startIndex = this.getTaskStartIndex(task);
     const endIndex = this.getTaskEndIndex(task);
     const spanDays = endIndex - startIndex + 1;
@@ -280,12 +296,12 @@ export class TaskComponent {
     return (spanDays / 7) * 100;
   }
   sortedWeekTasks() {
-    return [...this.getWeekTasks()].sort((a, b) => {
-      if (a.startDate !== b.startDate) {
+    return [...this.getCalendarWeekTasks()].sort((a, b) => {
+      if (a.startDate && b.startDate && a.startDate !== b.startDate) {
         return a.startDate.localeCompare(b.startDate);
       }
   
-      if (a.dueDate !== b.dueDate) {
+      if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) {
         return a.dueDate.localeCompare(b.dueDate);
       }
   
@@ -297,6 +313,14 @@ export class TaskComponent {
   }
   getTaskTop(task: { id: string }) {
     const row = this.getTaskRow(task);
-    return row * 48;
+    return row * this.calendarRowHeightPx;
+  }
+
+  /** 週内タスク件数に合わせてボードの高さを確保（下の行が隠れないようにする） */
+  getCalendarBoardMinHeight(): number {
+    const rows = this.sortedWeekTasks().length;
+    const taskBand = rows * this.calendarRowHeightPx + 24;
+    const bodyFloor = 220;
+    return Math.max(320, this.calendarHeaderBandPx + Math.max(bodyFloor, taskBand));
   }
 }

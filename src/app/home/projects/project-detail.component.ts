@@ -1,6 +1,12 @@
 import { Component, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { getProject, leaveProject } from '../../firestore';
+import {
+    getProject,
+    getProjectMembers,
+    getUser,
+    deleteProjectMember,
+    isAdmin,
+} from '../../firestore';
 import { Project } from '../../types/project';
 import { getTasksByProjectId } from '../../firestore';
 import { AddTaskInput, Task } from '../../types/task';
@@ -18,14 +24,6 @@ import { ModalService } from '../../services/modal.service';
 export class ProjectDetailComponent {
     constructor(private modalService: ModalService, private router: Router) {}
 
-    openProjectInviteModal(project: Project) {
-        this.modalService.open('project-invite', project);
-    }
-
-    openMemberListModal(project: Project) {
-        this.modalService.open('project-member-list', project);
-    }
-
     private route = inject(ActivatedRoute);
     authStateService = inject(AuthStateService);
 
@@ -37,28 +35,46 @@ export class ProjectDetailComponent {
     projectId = this.route.snapshot.paramMap.get('projectId');
     project: Project | null = null;
     tasks: Task[] = [];
-    isTaskAddModalOpen: boolean = false;
     newTaskTitle: string = '';
 
     async ngOnInit() {
-        this.project = await this.getProject() ?? null;
+        if(!this.projectId) return;
+        // プロジェクトを取得
+        this.project = await this.getProject(this.projectId);
+        if(!this.project) return;
+        // プロジェクトタスクを取得
         this.tasks = await this.getTasksByProjectId(this.projectId);
+
+        // プロジェクトメンバーを取得
+        const projectMembers = await this.getProjectMembers(this.projectId);
+        this.project.projectMembers = projectMembers;
+    }
+
+    openProjectInviteModal(project: Project) {
+        this.modalService.open('project-invite', project);
+    }
+
+    openProjectEditModal(project: Project) {
+        this.modalService.open('project-edit', project);
+    }
+
+    openMemberListModal(project: Project) {
+        this.modalService.open('project-member-list', project);
     }
 
     // タスク追加モーダルを開く
-    openTaskAddModal() {
-        this.isTaskAddModalOpen = true;
+    openTaskAddModal(project: Project) {
+        this.modalService.open('task-add', project);
     }
 
     closeTaskAddModal() {
-        this.isTaskAddModalOpen = false;
+        
     }
 
     // ドキュメントIDからプロジェクトを取得
-    async getProject() {
+    async getProject(projectId: string) {
         try {
-            if(!this.projectId) return;
-            const project = await getProject(this.projectId);
+            const project = await getProject(projectId);
             return project;
         } catch (error) {
             console.error('プロジェクトを取得できませんでした', error);
@@ -67,7 +83,7 @@ export class ProjectDetailComponent {
     }
 
     // プロジェクトに所属するタスクを取得
-    async getTasksByProjectId(projectId: string | null) {
+    async getTasksByProjectId(projectId: string) {
         try {
             if(!projectId) return [];
 
@@ -111,12 +127,30 @@ export class ProjectDetailComponent {
         return this.tasks.filter(task => task.status === status);
     }
 
+    // プロジェクトメンバーを取得
+    async getProjectMembers(projectId: string) {
+        try {
+            const projectMembers = await getProjectMembers(projectId);
+            projectMembers.forEach(async (member) => {
+                const user = await getUser(member.userId);
+                if(!user) return;
+                member.user = user;
+            });
+            return projectMembers;
+        } catch (error) {
+            console.error('プロジェクトメンバーを取得できませんでした', error);
+            return [];
+        }
+    }
+
     // プロジェクトを抜ける
     async leaveProject(projectId: string) {
         try {
             const user = this.authStateService.user();
             if(!user) return;
-            await leaveProject(projectId, user.id);
+            const isAdminUser = await isAdmin(user.id, projectId);
+            if(isAdminUser) return;
+            await deleteProjectMember(user.id, projectId);
             this.router.navigate(['/home/projects']);
         } catch (error) {
             console.error('プロジェクトを抜けれませんでした', error);

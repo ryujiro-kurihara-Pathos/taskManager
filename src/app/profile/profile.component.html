@@ -1,91 +1,229 @@
 <div class="profile-container">
-    <button class="btn home-btn" routerLink="/home">ホームへ</button>
+    <header>
+        <h1>プロフィール</h1>
+    </header>
+    <div class="profile-actions">
+        <button type="button" class="btn home-btn" routerLink="/home">ホームへ</button>
+        <button type="button" class="btn edit-btn" (click)="startEdit()">プロフィールを編集する</button>
+    </div>
     <div class="profile-info">
-        <div class="profile-circle"></div>
+        <div class="profile-circle" aria-hidden="true"></div>
         <p class="username">ユーザーネーム: {{ userName }}</p>
         <p class="email">メールアドレス: {{ userEmail }}</p>
         <p class="uid">ユーザーID: {{ userUid }}</p>
     </div>
-    <button class="btn edit-btn" (click)="startEdit()">プロフィールを編集する</button>
     
     @if (isEditing) {
         <div class="edit-container">
             <div class="edit-form">
                 <div class="edit-top">
                     <h3 class="edit-title">プロフィールを編集する</h3>
-                    <button class="edit-cancel" (click)="cancelEdit()">×</button>
+                    <button type="button" class="edit-cancel" (click)="cancelEdit()" aria-label="閉じる">×</button>
                 </div>
-                <div class="profile-circle"></div>
+                <div class="profile-circle" aria-hidden="true"></div>
                 <input type="text" [(ngModel)]="editName" placeholder="ユーザーネーム">
                 <p class="email">メールアドレス: {{ userEmail }}</p>
                 <p class="uid">ユーザーID: {{ userUid }}</p>
 
-                <button class="save-btn" (click)="saveEdit()">保存</button>
+                <button type="button" class="save-btn" (click)="saveEdit()">保存</button>
             </div>
         </div>
     }
 </div>
 
 <style>
-    .btn {
-        cursor: pointer;
-    }
-
     .profile-container {
         min-height: 100vh;
-        padding: 50px 0;
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 0 20px 32px;
         display: flex;
         flex-direction: column;
-        align-items: center;
-        background-color: white;
+        align-items: stretch;
+        background-color: #fff;
         box-sizing: border-box;
+    }
+
+    .profile-container > header {
+        padding: 16px 0;
+        border-bottom: 1px solid #e0e0e0;
+        margin-bottom: 16px;
+    }
+    .profile-container > header h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        color: #1a1a1a;
+    }
+
+    .profile-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .btn {
+        cursor: pointer;
+        font-size: 14px;
+        border-radius: 6px;
+        padding: 8px 16px;
+    }
+    .home-btn {
+        border: 1px solid #c8ccc9;
+        background: #f9fafb;
+        color: #333;
+    }
+    .home-btn:hover {
+        background: #ebf1ee;
+    }
+    .edit-btn {
+        border: none;
+        background: #4ea356;
+        color: #fff;
+        font-weight: 500;
+    }
+    .edit-btn:hover {
+        background: #255c2b;
     }
 
     .profile-info {
         display: flex;
         flex-direction: column;
         align-items: center;
+        max-width: 480px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 24px 20px;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        background: #fff;
+        box-sizing: border-box;
     }
 
     .profile-circle {
         width: 80px;
         height: 80px;
-        background-color: #999;
+        background: linear-gradient(145deg, #5cb564, #3d8f45);
         border-radius: 50%;
+        margin-bottom: 16px;
+    }
+    .profile-info .username,
+    .profile-info .email,
+    .profile-info .uid {
+        margin: 0 0 10px;
+        width: 100%;
+        font-size: 14px;
+        color: #333;
+        line-height: 1.5;
+    }
+    .profile-info .uid {
+        margin-bottom: 0;
+        font-size: 13px;
+        color: #666;
+        word-break: break-all;
     }
 
     /* 編集モード */
     .edit-container {
-        width: 100vw;
-        height: 100vh;
         position: fixed;
-        top: 0;
-        left: 0;
+        inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: rgba(255, 0, 0, 0.1);
+        padding: 20px;
+        box-sizing: border-box;
+        background-color: rgba(0, 0, 0, 0.35);
+        z-index: 1000;
     }
 
     .edit-form {
-        padding: 5%;
-        width: 80%;
-        height: 60%;
+        width: min(92vw, 440px);
+        max-height: min(88vh, 640px);
+        overflow: auto;
+        padding: 20px;
         background-color: #fff;
-        border-radius: 20px;
-        box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
+        border-radius: 12px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
     }
 
     .edit-top {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 4px;
+    }
+
+    .edit-title {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+        color: #1a1a1a;
     }
 
     .edit-cancel {
-        font-size: 24px;
-        background: none;
-        border: none;
+        font-size: 22px;
+        line-height: 1;
+        padding: 4px 10px;
+        background: #f9fafb;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
         cursor: pointer;
+        color: #333;
+    }
+    .edit-cancel:hover {
+        background: #ebf1ee;
+    }
+
+    .edit-form > .profile-circle {
+        align-self: center;
+        margin-bottom: 0;
+    }
+
+    .edit-form input[type="text"] {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid #c8ccc9;
+        border-radius: 8px;
+        font-size: 14px;
+        box-sizing: border-box;
+        outline: none;
+        background: #f9fafb;
+    }
+    .edit-form input[type="text"]:focus {
+        border-color: #4ea356;
+        background: #fff;
+    }
+
+    .edit-form .email,
+    .edit-form .uid {
+        margin: 0;
+        font-size: 14px;
+        color: #555;
+    }
+    .edit-form .uid {
+        font-size: 13px;
+        color: #666;
+        word-break: break-all;
+    }
+
+    .save-btn {
+        margin-top: 8px;
+        padding: 10px 16px;
+        border: none;
+        border-radius: 6px;
+        background: #4ea356;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+    .save-btn:hover {
+        background: #255c2b;
     }
 </style>

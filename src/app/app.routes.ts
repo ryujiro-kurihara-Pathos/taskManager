@@ -11,6 +11,7 @@ import { InviteResponseComponent } from './home/projects/invite-response.compone
 import { InboxComponent } from './home/inbox/inbox.component';
 import { TeamComponent } from './home/teams/team.component';
 import { TeamDetailComponent } from './home/teams/team-detail.component';
+import { GoalComponent } from './home/goals/goals.component';
 
 export const routes: Routes = [
   { 
@@ -27,6 +28,7 @@ export const routes: Routes = [
         { path: 'inbox', component: InboxComponent },
         { path: 'teams', component: TeamComponent },
         { path: 'teams/:teamId', component: TeamDetailComponent },
+        { path: 'goals', component: GoalComponent },
     ],
   },
   { path: 'invite-response/:inviteId', component: InviteResponseComponent },

@@ -8,10 +8,10 @@ export type Team = {
     description: string; // チームの説明
 
     createdAt: string; // チーム作成日時
-    // updatedAt: string;
+    updatedAt: string;
 }
 
-export type AddTeamInput = Omit<Team, 'id' | 'createdAt'>;
+export type AddTeamInput = Omit<Team, 'id' | 'createdAt' | 'updatedAt'>;
 
 export const initialTeamInput: AddTeamInput = {
     name: '',

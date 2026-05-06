@@ -2,10 +2,9 @@ import { Component, inject } from '@angular/core';
 import {
     getNotifications,
     acceptInvite,
-    addProjectMember,
-    getProjectIdFromProjectInviteId,
+    getTargetIdFromInviteId,
     readNotification,
-    getProjectInviteStatus,
+    getInviteStatus,
  } from '../../firestore';
 import { AuthStateService } from '../../services/auth-state.service';
 import { Notification } from '../../types/notification';
@@ -43,7 +42,7 @@ export class InboxComponent {
         await readNotification(notification.id);
 
         // 通知のステータスを取得
-        const status = await getProjectInviteStatus(notification.sourceId);
+        const status = await getInviteStatus(notification.sourceId);
         this.modalService.modalState$.subscribe((modalState) => {
             modalState.data.status = status;
         });
@@ -61,16 +60,16 @@ export class InboxComponent {
     // 招待を承諾
     async acceptInvite(notification: Notification) {
         try {
-            if (notification.type !== 'project-invite') return;
+            if (notification.type !== 'project-invite' && notification.type !== 'team-invite') return;
             const currentUser = this.authState.user();
             if (!currentUser) return;
 
             // projectInviteIdからprojectIdを取得
-            const projectId = await getProjectIdFromProjectInviteId(notification.sourceId);
+            const projectId = await getTargetIdFromInviteId(notification.sourceId);
             if (!projectId) return;
 
             await acceptInvite(notification.sourceId, currentUser.id);
-            await addProjectMember(projectId, currentUser.id);
+            // await addProjectMember(projectId, currentUser.id);
         } catch (error) {
             throw error;
         }

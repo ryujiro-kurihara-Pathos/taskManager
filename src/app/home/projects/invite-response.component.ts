@@ -77,7 +77,11 @@ export class InviteResponseComponent {
 
         try {
             await acceptInvite(this.invite.id, currentUser.id);
-            await addProjectMember(this.invite.targetId, currentUser.id);
+            await addProjectMember({
+                projectId: this.invite.targetId,
+                userId: currentUser.id,
+                role: 'member',
+            });
             this.message = '招待を承認しました';
         } catch (error) {
             this.message = error instanceof Error ? error.message : '招待の承認に失敗しました';

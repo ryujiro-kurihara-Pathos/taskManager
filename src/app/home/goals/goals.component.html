@@ -1,0 +1,489 @@
+<div class="goal-page">
+  <header class="goal-header">
+    <h1 class="goal-title">目標</h1>
+    <button
+      type="button"
+      class="goal-primary-btn"
+      (click)="openCreate()"
+      [disabled]="!canCreate()"
+    >
+      新規目標
+    </button>
+  </header>
+
+  <nav class="goal-tabs" aria-label="目標の種類">
+    @for (t of tabs; track t.id) {
+      <button
+        type="button"
+        class="goal-tab"
+        [class.active]="activeTab() === t.id"
+        (click)="setTab(t.id)"
+      >
+        {{ t.label }}
+      </button>
+    }
+  </nav>
+
+  <section class="goal-list-section" aria-live="polite">
+    @if (filteredGoals().length === 0) {
+      <p class="goal-empty">この種類の目標はまだありません。</p>
+    } @else {
+      <ul class="goal-card-list">
+        @for (g of filteredGoals(); track g.id) {
+          @if (canView(g)) {
+            <li>
+              <button
+                type="button"
+                class="goal-card"
+                (click)="openDetail(g)"
+              >
+                <span class="goal-card-name">{{ g.title }}</span>
+                <span class="goal-card-meta">
+                  @if (g.dueDate) {
+                    期限 {{ g.dueDate }}
+                  } @else {
+                    期限未設定
+                  }
+                </span>
+                <span class="goal-card-status">{{ g.status }}</span>
+              </button>
+            </li>
+          }
+        }
+      </ul>
+    }
+  </section>
+</div>
+
+@if (createOpen()) {
+  <div class="goal-modal-backdrop" (click)="closeCreate()"></div>
+  <div class="goal-modal" role="dialog" aria-modal="true" aria-labelledby="goal-create-title">
+    <h2 id="goal-create-title" class="goal-modal-title">新規目標</h2>
+    <div class="goal-form-grid">
+      <label>目標名 <input type="text" [(ngModel)]="newGoal.title" name="ngTitle" /></label>
+      <label class="full">説明
+        <textarea rows="3" [(ngModel)]="newGoal.description" name="ngDesc"></textarea>
+      </label>
+      <label>期限 <input type="date" [(ngModel)]="newGoal.dueDate" name="ngDue" /></label>
+      <label>状態
+        <select [(ngModel)]="newGoal.status" name="ngSt">
+          <option value="未着手">未着手</option>
+          <option value="進行中">進行中</option>
+          <option value="保留">保留</option>
+          <option value="達成">達成</option>
+        </select>
+      </label>
+      <label>優先度
+        <select [(ngModel)]="newGoal.priority" name="ngPr">
+          <option [ngValue]="null">未設定</option>
+          <option value="高">高</option>
+          <option value="中">中</option>
+          <option value="低">低</option>
+        </select>
+      </label>
+      @if (activeTab() === 'project') {
+        <label class="full">プロジェクト
+          <select [(ngModel)]="createContextProjectId" name="ngPid">
+            @for (p of myProjects(); track p.id) {
+              <option [value]="p.id">{{ p.name }}</option>
+            }
+          </select>
+        </label>
+      }
+      @if (activeTab() === 'team') {
+        <label class="full">チーム
+          <select [(ngModel)]="createContextTeamId" name="ngTid">
+            @for (t of myTeams(); track t.id) {
+              <option [value]="t.id">{{ t.name }}</option>
+            }
+          </select>
+        </label>
+      }
+    </div>
+    <div class="goal-modal-actions">
+      <button type="button" class="goal-ghost-btn" (click)="closeCreate()">キャンセル</button>
+      <button type="button" class="goal-primary-btn" (click)="submitCreate()">作成</button>
+    </div>
+  </div>
+}
+
+@if (detailOpen() && selectedGoal(); as g) {
+  <div class="goal-modal-backdrop" (click)="closeDetail()"></div>
+  <div class="goal-modal goal-modal-wide" role="dialog" aria-modal="true" aria-labelledby="goal-detail-title">
+    <h2 id="goal-detail-title" class="goal-modal-title">{{ g.title }}</h2>
+
+    <div class="goal-detail-badge-row">
+      <span class="badge">{{ g.scope === 'personal' ? '個人' : g.scope === 'project' ? 'プロジェクト' : 'チーム' }}</span>
+      @if (g.scope === 'project') {
+        <span class="badge soft">{{ projectName(g.projectId) }}</span>
+      }
+      @if (g.scope === 'team') {
+        <span class="badge soft">{{ teamName(g.teamId) }}</span>
+      }
+    </div>
+
+    <section class="goal-progress-block" aria-label="進捗率">
+      <div class="goal-progress-label">
+        進捗率（表示時計算）
+        @if (detailProgressPercent() !== null) {
+          <strong>{{ detailProgressPercent() }}%</strong>
+        }
+      </div>
+      <div class="goal-progress-bar" aria-hidden="true">
+        <div
+          class="goal-progress-fill"
+          [style.width.%]="detailProgressPercent() ?? 0"
+        ></div>
+      </div>
+    </section>
+
+    @if (canEdit(g)) {
+      <h3 class="goal-subheading">編集</h3>
+      <div class="goal-form-grid">
+        <label>目標名 <input type="text" [(ngModel)]="editDraft.title" name="edTitle" /></label>
+        <label class="full">説明
+          <textarea rows="3" [(ngModel)]="editDraft.description" name="edDesc"></textarea>
+        </label>
+        <label>期限 <input type="date" [(ngModel)]="editDraft.dueDate" name="edDue" /></label>
+        <label>状態
+          <select [(ngModel)]="editDraft.status" name="edSt">
+            <option value="未着手">未着手</option>
+            <option value="進行中">進行中</option>
+            <option value="保留">保留</option>
+            <option value="達成">達成</option>
+          </select>
+        </label>
+        <label>優先度
+          <select [(ngModel)]="editDraft.priority" name="edPr">
+            <option [ngValue]="null">未設定</option>
+            <option value="高">高</option>
+            <option value="中">中</option>
+            <option value="低">低</option>
+          </select>
+        </label>
+      </div>
+      <div class="goal-modal-actions">
+        <button type="button" class="goal-primary-btn" (click)="saveEdit()">保存</button>
+      </div>
+    } @else {
+      <div class="goal-readonly-block">
+        <p><strong>説明</strong><br />{{ g.description || '—' }}</p>
+        <p><strong>期限</strong> {{ g.dueDate || '未設定' }}</p>
+        <p><strong>状態</strong> {{ g.status }}</p>
+        <p><strong>優先度</strong> {{ g.priority || '未設定' }}</p>
+      </div>
+    }
+
+    <h3 class="goal-subheading">関連タスク（goalId）</h3>
+    <ul class="goal-task-list">
+      @for (t of detailLinkedTasks(); track t.id) {
+        <li [class.invalid]="!taskLinkValid(g, t)">
+          <span class="task-title">{{ t.title }}</span>
+          <span class="task-status">{{ t.status }}</span>
+          @if (!taskLinkValid(g, t)) {
+            <span class="warn">種別不一致</span>
+          }
+          @if (canEdit(g)) {
+            @if (t.goalId === g.id) {
+              <button type="button" class="goal-link-btn" (click)="unlinkTask(g, t)">解除</button>
+            }
+          }
+        </li>
+      } @empty {
+        <li class="muted">関連タスクはありません。</li>
+      }
+    </ul>
+
+    @if (canEdit(g)) {
+      <h3 class="goal-subheading">タスクを紐づける</h3>
+      <p class="muted small">この目標の種類に合うタスクだけ表示しています。</p>
+      <ul class="goal-linkable-list">
+        @for (t of linkableTasks(); track t.id) {
+          <li>
+            <span>{{ t.title }}（{{ t.status }}）</span>
+            @if (t.goalId === g.id) {
+              <span class="muted">紐づけ済み</span>
+            } @else {
+              <button type="button" class="goal-link-btn" (click)="linkTask(g, t)">紐づけ</button>
+            }
+          </li>
+        } @empty {
+          <li class="muted">紐づけ可能なタスクがありません。</li>
+        }
+      </ul>
+    }
+
+    <div class="goal-modal-actions goal-modal-footer">
+      @if (canDelete(g)) {
+        <button type="button" class="goal-danger-btn" (click)="deleteGoal()">削除</button>
+      }
+      <button type="button" class="goal-ghost-btn" (click)="closeDetail()">閉じる</button>
+    </div>
+  </div>
+}
+
+<style>
+  .goal-page {
+    padding: 0 20px 24px;
+    /* max-width: 960px; */
+    margin: 0 auto;
+  }
+  .goal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 0;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  .goal-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .goal-primary-btn {
+    padding: 8px 16px;
+    background: #4ea356;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .goal-primary-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .goal-primary-btn:hover:not(:disabled) {
+    background: #255c2b;
+  }
+  .goal-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 16px 0;
+    flex-wrap: wrap;
+  }
+  .goal-tab {
+    padding: 8px 14px;
+    border: 1px solid #c8ccc9;
+    background: #f9fafb;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .goal-tab.active {
+    border-color: #1e3112;
+    background: #ebf1ee;
+    font-weight: 600;
+  }
+  .goal-empty {
+    color: #666;
+    font-size: 14px;
+  }
+  .goal-card-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .goal-card {
+    width: 100%;
+    text-align: left;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .goal-card:hover {
+    background: #f9fafb;
+  }
+  .goal-card-name {
+    font-weight: 600;
+  }
+  .goal-card-meta {
+    font-size: 13px;
+    color: #555;
+  }
+  .goal-card-status {
+    font-size: 13px;
+    color: #1e3112;
+  }
+  .goal-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 1000;
+  }
+  .goal-modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1001;
+    width: min(92vw, 440px);
+    max-height: min(88vh, 720px);
+    overflow: auto;
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  }
+  .goal-modal-wide {
+    width: min(94vw, 560px);
+  }
+  .goal-modal-title {
+    margin: 0 0 12px;
+    font-size: 18px;
+  }
+  .goal-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .goal-form-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+  }
+  .goal-form-grid .full {
+    grid-column: 1 / -1;
+  }
+  .goal-form-grid input,
+  .goal-form-grid textarea,
+  .goal-form-grid select {
+    padding: 8px 10px;
+    border: 1px solid #c8ccc9;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  .goal-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .goal-modal-footer {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .goal-ghost-btn {
+    padding: 8px 14px;
+    border: 1px solid #c8ccc9;
+    background: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .goal-danger-btn {
+    padding: 8px 14px;
+    border: none;
+    background: #b3261e;
+    color: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .goal-detail-badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .badge {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: #1e3112;
+    color: #fff;
+  }
+  .badge.soft {
+    background: #e8eee9;
+    color: #1e3112;
+  }
+  .goal-progress-block {
+    margin: 12px 0 16px;
+  }
+  .goal-progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  .goal-progress-bar {
+    height: 8px;
+    background: #e8eee9;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .goal-progress-fill {
+    height: 100%;
+    background: #4ea356;
+    border-radius: 999px;
+    transition: width 0.2s ease;
+  }
+  .goal-subheading {
+    margin: 16px 0 8px;
+    font-size: 15px;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 4px;
+  }
+  .goal-readonly-block p {
+    margin: 8px 0;
+    font-size: 14px;
+  }
+  .goal-task-list,
+  .goal-linkable-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 14px;
+  }
+  .goal-task-list li,
+  .goal-linkable-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .goal-task-list li.invalid {
+    background: #fff4f4;
+    margin: 0 -8px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .task-title {
+    flex: 1;
+    min-width: 0;
+  }
+  .task-status {
+    font-size: 13px;
+    color: #555;
+  }
+  .warn {
+    font-size: 12px;
+    color: #b3261e;
+  }
+  .goal-link-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid #4ea356;
+    background: #fff;
+    color: #1e3112;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .muted {
+    color: #777;
+  }
+  .muted.small {
+    font-size: 12px;
+    margin: 0 0 8px;
+  }
+</style>

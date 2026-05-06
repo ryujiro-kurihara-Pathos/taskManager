@@ -16,7 +16,7 @@ export type Task = {
     assignableUsers: User[] | null; // 担当者候補
 
     createdAt: string; // 作成日時
-    // updatedAt: string;
+    updatedAt: string;
 
     comments: Comment[]; // コメント
     subTasks: Task[]; // サブタスク
@@ -27,7 +27,7 @@ export type Task = {
     teamId: string | null; // チームID
 };
 
-export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'assignableUsers' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
+export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'assignableUsers' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
 
 export const initialTask: AddTaskInput = {
     uid: '',
