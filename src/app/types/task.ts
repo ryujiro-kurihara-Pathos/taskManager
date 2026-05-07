@@ -18,6 +18,8 @@ export type Task = {
     createdAt: string; // 作成日時
     updatedAt: string;
 
+    tagIds: string[];
+
     comments: Comment[]; // コメント
     subTasks: Task[]; // サブタスク
     hierarchyTask: Task[]; // 階層タスク
@@ -42,6 +44,8 @@ export const initialTask: AddTaskInput = {
 
     projectId: null,
     teamId: null,
+
+    tagIds: [],
 }
 
 export type Comment = {
@@ -60,3 +64,14 @@ export type AddCommentInput = {
 
 export type SortKey = 'dueDate' | 'createdAt' | 'updatedAt' | null;
 export type FilterKey = 'notDone' | 'done' | 'thisWeek' | 'nextWeek' | null;
+
+export type Tag = {
+    id: string;
+
+    name: string;
+    color: string;
+    createdByUid: string;
+    isDefault: boolean;
+}
+
+export type AddTagInput = Omit<Tag, 'id'>;

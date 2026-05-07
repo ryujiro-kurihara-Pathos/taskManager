@@ -18,6 +18,7 @@ type ModalType =
 'project-invite' |
 'project-member-list' |
 'notification-detail' |
+'project-add-task' |
 'team-task-detail' |
 'team-member-detail' |
 null;

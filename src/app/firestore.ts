@@ -8,11 +8,9 @@ import {
     getDoc,
     updateDoc,
     deleteDoc,
-    arrayRemove,
-    arrayUnion,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { AddTaskInput, Task } from "./types/task";
+import { AddTaskInput, Task, AddTagInput } from "./types/task";
 import { Project, AddProjectInput, AddProjectMemberInput, ProjectMember } from "./types/project";
 import { Notification, AddNotificationInput } from "./types/notification";
 import { AddTeamInput, AddTeamMemberInput, Team, TeamMember } from "./types/team";
@@ -205,6 +203,35 @@ export async function isExistingCollection(collectionName: string, taskId: strin
         throw error;
     }
 }
+// タグの追加
+export async function addTag(inputTag: AddTagInput) {
+    try {
+        const docRef = await addDoc(collection(db, 'tags'), {
+            ...inputTag,
+        });
+        const tag = {
+            id: docRef.id,
+            ...inputTag,
+        }
+        return tag;
+    } catch (error) {
+        throw error;
+    }
+}
+// タグを取得
+export async function getTags(uid: string) {
+    try {
+        const q = query(collection(db, 'tags'), where('createdByUid', '==', uid));
+        const snapshot = await getDocs(q);
+        const tags: any[] = [];
+        snapshot.forEach((doc) => {
+            tags.push({ id: doc.id, ...doc.data() });
+        });
+        return tags;
+    } catch (error) {
+        throw error;
+    }
+}
 
 // コメント
 // コメントを追加
@@ -299,11 +326,13 @@ export async function addProject(input: AddProjectInput) {
             visibility: input.visibility,
             description: input.description,
             createdAt: createdAt,
+            updatedAt: createdAt,
         });
         const project = {
             id: docRef.id,
             ...input,
             createdAt: createdAt.toISOString(),
+            updatedAt: createdAt.toISOString(),
         } as Project;
 
         return project;
@@ -351,32 +380,43 @@ export async function getProjectsByUserId(uid: string) {
         const q = query(memberRef, where('userId', '==', uid));
         const snapshot = await getDocs(q);
         const projects: Project[] = [];
-        for (const docSnap of snapshot.docs) {
-            const projectId = docSnap.data()['projectId'];
-            const project = await getProject(projectId);
-            if (project) projects.push(project);
-        }
+        const promises: Promise<void>[] = [];
+        snapshot.forEach((doc) => {
+            const projectId = doc.data()['projectId'];
+            if (!projectId) return;
+
+            promises.push(
+                getProject(projectId).then((project) => {
+                    if (project) projects.push(project);
+                }),
+            );
+        });
+        await Promise.all(promises);
         return projects;
     } catch (error) {
         throw error;
     }
 }
 // ドキュメントIDからプロジェクトを取得
-export async function getProject(projectId: string) {
+export async function getProject(projectId: string): Promise<Project | null> {
     try {
         const docRef = doc(db, 'projects', projectId);
         const docSnap = await getDoc(docRef);
         if(!docSnap.exists()) return null;
 
-        const data = docSnap.data() as Project;
-        return {
-            id: docSnap.id,
-            name: data.name,
-            ownerId: data.ownerId,
-            visibility: data.visibility,
-            description: data.description,
-            createdAt: data.createdAt,
+        const data = docSnap.data();
+        const project = {
+            id: projectId,
+            name: data['name'],
+            ownerId: data['ownerId'],
+            visibility: data['visibility'],
+            description: data['description'],
+            createdAt: data['createdAt'],
+            updatedAt: data['updatedAt'],  
+            teamId: data['teamId'],
         } as Project;
+
+        return project;
 
     } catch (error) {
         return null;
@@ -386,7 +426,10 @@ export async function getProject(projectId: string) {
 export async function updateProject(projectId: string, inputProject: AddProjectInput) {
     try {
         const projectRef = doc(db, 'projects', projectId);
-        const projectResult = await updateDoc(projectRef, inputProject);
+        const projectResult = await updateDoc(projectRef, {
+            ...inputProject,
+            updatedAt: new Date(),
+        });
         return projectResult;
     } catch (error) {
         throw error;
@@ -599,6 +642,17 @@ export async function getInviteStatus(inviteId: string) {
         if(!inviteSnap.exists()) return null;
         const inviteData = inviteSnap.data() as Invite;
         return inviteData.status;
+    } catch (error) {
+        throw error;
+    }
+}
+// プロジェクトタスクの数を取得
+export async function getTaskCountByProjectId(projectId: string) {
+    try {
+        const taskRef = collection(db, 'tasks');
+        const q = query(taskRef, where('projectId', '==', projectId));
+        const snapshot = await getDocs(q);
+        return snapshot.size;
     } catch (error) {
         throw error;
     }

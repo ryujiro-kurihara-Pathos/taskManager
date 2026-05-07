@@ -1,16 +1,18 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { AuthStateService } from '../../services/auth-state.service';
 import {
     addProject,
     addProjectMember,
     getProjectMembers,
     getProjectsByUserId,
+    getTaskCountByProjectId,
     getUser,
 } from '../../firestore';
 import { FormsModule } from '@angular/forms';
 import { AddProjectMemberInput, Project } from '../../types/project';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
+import { TasksService } from '../../services/tasks.service';
 
 @Component({
     selector: 'app-project-list',
@@ -22,34 +24,63 @@ import { AuthService } from '../../services/auth.service';
 export class ProjectListComponent {
     authState = inject(AuthStateService);
     authService = inject(AuthService);
+    tasksService = inject(TasksService);
 
-    projects: Project[] = [];
+    projects = signal<Project[]>([]);
+
+    // プロジェクト検索（tasks と同仕様: IME対応は template 側、比較は NFKC 正規化）
+    searchQuery = signal('');
+    filteredProjects = computed(() =>
+        this.filterProjectsBySearchQuery(this.projects()),
+    );
 
     // プロジェクト作成モーダル（テスト）
     isProjectAddModalOpen = false;
 
     // 追加するプロジェクト名
     newProjectName = '';
+    newProjectVisibility: 'private' | 'members' = 'private';
+    newProjectDescription = '';
 
     async ngOnInit() {
         this.authService.watchAuthState(async(user) => {
             if(!user) {
-                this.projects = [];
+                this.projects.set([]);
                 return;
             }
+            
             // プロジェクトを取得
-            this.projects = await this.getProjects(user.uid);
-            // プロジェクトメンバーを取得
-            for(const project of this.projects) {
-                const projectMembers = await this.getProjectMembers(project.id);
-                projectMembers.forEach(async (member) => {
+            const projects = await getProjectsByUserId(user.uid);
+            if(!projects) return;
+            this.projects.set(projects);
+
+            for(const project of this.projects()) {
+                const taskCount = await this.getTaskCount(project.id);
+                project.taskCount = taskCount;
+                const members = await this.getProjectMembers(project.id);
+                members.forEach(async (member) => {
                     const user = await getUser(member.userId);
                     if(!user) return;
-                    member.user = user
+                    member.user = user;
                 });
-                project.projectMembers = projectMembers;
+                project.projectMembers = members;
             }
-        })
+        });
+    }
+
+    private normalizeForSearch(value: unknown): string {
+        const s = value == null ? '' : String(value);
+        try {
+            return s.normalize('NFKC').trim().toLowerCase();
+        } catch {
+            return s.trim().toLowerCase();
+        }
+    }
+
+    private filterProjectsBySearchQuery(projects: Project[]): Project[] {
+        const q = this.normalizeForSearch(this.searchQuery());
+        if (!q) return projects;
+        return projects.filter((p) => this.normalizeForSearch(p.name).includes(q));
     }
 
     openProjectAddModal() {
@@ -59,6 +90,18 @@ export class ProjectListComponent {
     closeProjectAddModal() {
         this.isProjectAddModalOpen = false;
         this.newProjectName = '';
+        this.newProjectVisibility = 'private';
+        this.newProjectDescription = '';
+    }
+
+    async getTaskCount(projectId: string) {
+        try {
+            const taskCount = await getTaskCountByProjectId(projectId);
+            return taskCount;
+        } catch (error) {
+            console.error('タスク数取得に失敗しました', error);
+            return 0;
+        }
     }
 
     async addProject() {
@@ -74,10 +117,9 @@ export class ProjectListComponent {
             const project = await addProject({
                 name: this.newProjectName,
                 ownerId: user.id,
-                visibility: 'private',
-                description: '',
+                visibility: this.newProjectVisibility,
+                description: this.newProjectDescription,
                 teamId: null,
-                projectMembers: null,
             });
             if (!project) return;
 
@@ -95,21 +137,21 @@ export class ProjectListComponent {
     }
 
     // プロジェクトをこのページに追加
-    async addProjectToPage(project: Project | null) {
-        if (!project) return;
-        // プロジェクトメンバーを取得
-        const user = await getUser(project.ownerId);
-        if(!user) return;
-        project.projectMembers = [{
-            id: project.id,
-            projectId: project.id,
-            userId: project.ownerId,
-            role: 'owner',
-            createdAt: project.createdAt,
-            user: user,
-        }];
-
-        this.projects.push(project);
+    async addProjectToPage(project: Project) {
+        try {
+            const members = await this.getProjectMembers(project.id);
+            members.forEach(async (member) => {
+                const user = await getUser(member.userId);
+                if(!user) return;
+                member.user = user;
+            });
+            const taskCount = await this.getTaskCount(project.id);
+            project.projectMembers = members;
+            project.taskCount = taskCount;
+            this.projects.update((projects) => [project, ...projects]);
+        } catch (error) {
+            console.error('プロジェクトをこのページに追加に失敗しました', error);
+        }
     }
     
     // プロジェクトメンバーをFirestoreに追加

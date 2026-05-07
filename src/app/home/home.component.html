@@ -49,72 +49,79 @@
   </div>
 
   @if (modalState.isOpen) {
-    @if (modalState.type === 'task-add') {
-      <div class="modal add-task-modal" (click)="closeModal()">
-        <div class="modal-form add-task-form" (click)="$event.stopPropagation()">
+    @if (modalState.type === 'task-add' || modalState.type === 'project-add-task') {
+      <div class="modal edit-task-modal" (click)="closeModal()">
+        <div class="modal-form edit-task-form" (click)="$event.stopPropagation()">
           <div class="modal-top">
-            <p class="add-task-title">タスクを追加</p>
-            <button class="add-task-close-btn" type="button" (click)="closeModal()">×</button>
+            <p class="edit-task-title">タスクを追加</p>
+            <button class="edit-task-close-btn" type="button" (click)="closeModal()">×</button>
           </div>
-          <div class="add-task-body">
-            <div class="add-task-item">
-              <p class="add-label">タスク名</p>
-              <input
-                type="text"
-                [(ngModel)]="addingTask.title"
-                class="add-task-name-input"
-                placeholder="タスク名を入力してください"
-              />
+          <div class="modal-body edit-task-body">
+            <input
+              type="text"
+              class="edit-task-name-input"
+              [(ngModel)]="addingTask.title"
+              placeholder="タスク名を入力してください"
+            />
+            <div class="edit-task-item">
+              <p class="edit-label">開始日</p>
+              <input type="date" class="edit-task-start-date-input" [(ngModel)]="addingTask.startDate" />
             </div>
-            <div class="add-task-item">
-              <p class="add-label">開始日</p>
-              <input
-                type="date"
-                [(ngModel)]="addingTask.startDate"
-                class="add-task-due-date-input"
-              />
+            <div class="edit-task-item">
+              <p class="edit-label">期日</p>
+              <input type="date" class="edit-task-due-date-input" [(ngModel)]="addingTask.dueDate" />
             </div>
-            <div class="add-task-item">
-              <p class="add-label">期日</p>
-              <input
-                type="date"
-                [(ngModel)]="addingTask.dueDate"
-                class="add-task-due-date-input"
-              />
-            </div>
-            <div class="add-task-item">
-              <p class="add-label">ステータス</p>
-              <select [(ngModel)]="addingTask.status" name="status">
-                <option value="">-</option>
+            <div class="edit-task-item">
+              <p class="edit-label">ステータス</p>
+              <select name="add-status" [(ngModel)]="addingTask.status">
                 <option value="未着手">未着手</option>
                 <option value="進行中">進行中</option>
+                <option value="保留">保留</option>
                 <option value="完了">完了</option>
               </select>
             </div>
-            <div class="add-task-item">
-              <p class="add-label">優先度</p>
-              <select [(ngModel)]="addingTask.priority" name="priority">
-                <option value="">-</option>
+            <div class="edit-task-item">
+              <p class="edit-label">優先度</p>
+              <select name="add-priority" [(ngModel)]="addingTask.priority">
+                <option [ngValue]="null">未入力</option>
                 <option value="高">高</option>
                 <option value="中">中</option>
                 <option value="低">低</option>
               </select>
             </div>
-            <div class="add-task-item">
-              <p class="add-label">メモ</p>
+            <div class="edit-task-item">
+              <p class="edit-label">メモ</p>
               <input
                 type="text"
+                class="edit-task-memo-input"
                 [(ngModel)]="addingTask.memo"
-                class="add-task-memo-input"
                 placeholder="メモを入力してください"
               />
             </div>
-            <div class="add-task-item">
-              <p class="add-label">サブタスク</p>
-              <button class="add-subtask-btn" type="button">+</button>
+            <div class="edit-task-item edit-task-tags">
+              <p class="edit-label">タグ</p>
+              <div class="task-add-tag-column">
+                <div class="task-tag-list">
+                  @for (tag of taskTags; track tag.id) {
+                    <label class="task-tag-option">
+                      <input
+                        type="checkbox"
+                        [checked]="addingTask.tagIds.includes(tag.id)"
+                        (change)="toggleAddingTaskTag(tag.id, $any($event.target).checked)"
+                      />
+                      <span>{{ tag.name }}</span>
+                    </label>
+                  }
+                </div>
+                <div class="task-add-tag-new">
+                  <input type="text" [(ngModel)]="newTagName" placeholder="新しいタグ名" class="task-add-tag-name-input" />
+                  <input type="color" [(ngModel)]="newTagColor" title="色" />
+                  <button type="button" class="task-add-tag-create-btn" (click)="createTag()">作成</button>
+                </div>
+              </div>
             </div>
           </div>
-          <button class="add-task-save-btn" type="button" (click)="addTask()">追加</button>
+          <button class="edit-task-save-btn" type="button" (click)="addTask(modalState.type === 'project-add-task' ? 'projectTasks' : 'myTasks')">追加</button>
         </div>
       </div>
     } @else if (modalState.type === 'task-edit') {
@@ -191,6 +198,28 @@
                 placeholder="メモを入力してください"
               >
             </div>
+            <div class="edit-task-item edit-task-tags">
+              <p class="edit-label">タグ</p>
+              <div class="task-add-tag-column">
+                <div class="task-tag-list">
+                  @for (tag of taskTags; track tag.id) {
+                    <label class="task-tag-option">
+                      <input
+                        type="checkbox"
+                        [checked]="tasksService.editingTask.tagIds.includes(tag.id)"
+                        (change)="toggleEditingTaskTag(tag.id, $any($event.target).checked)"
+                      />
+                      <span>{{ tag.name }}</span>
+                    </label>
+                  }
+                </div>
+                <div class="task-add-tag-new">
+                  <input type="text" [(ngModel)]="newTagName" placeholder="新しいタグ名" class="task-add-tag-name-input" />
+                  <input type="color" [(ngModel)]="newTagColor" title="色" />
+                  <button type="button" class="task-add-tag-create-btn" (click)="createTag()">作成</button>
+                </div>
+              </div>
+            </div>
             <div class="edit-task-item edit-task-subtasks-container">
               <p class="edit-label">サブタスク</p>
               <button class="edit-task-subtask-add-btn" type="button" (click)="addEmptySubTask(modalState.data.id)">+</button>
@@ -225,6 +254,7 @@
               <div class="edit-task-comments-container">
                 @for (comment of modalState.data.comments; track comment.id) {
                   <p class="edit-task-comment-content">{{ comment.content }}</p>
+                  <p class="edit-task-comment-time">{{ tasksService.displayCommentTime(comment.createdAt) }}</p>
                   <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)">
                     削除
                   </button>
@@ -802,6 +832,65 @@
   .edit-task-memo-input:focus {
     outline: none;
     border-color: #1b5214;
+  }
+  .edit-task-tags {
+    align-items: flex-start;
+  }
+  .task-add-tag-column {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .task-tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+  }
+  .task-tag-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .task-tag-option input {
+    margin: 0;
+    cursor: pointer;
+  }
+  .task-add-tag-new {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .task-add-tag-name-input {
+    flex: 1;
+    min-width: 120px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  .task-add-tag-create-btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    background: #1b5214;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .task-add-tag-new input[type='color'] {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
   }
   .edit-task-item select,
   .edit-task-item input[type='date'],

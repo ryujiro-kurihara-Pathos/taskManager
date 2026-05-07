@@ -18,21 +18,21 @@ import {
   isAdmin,
   deleteProjectMember,
   acceptInvite,
-  
+  addTag,
   declineProjectInvite,
   getInviteStatus,
   updateProject,
-  getProjectMembers,
   deleteProject,
   deleteProjectAllMembers,
   addProjectMember,
   getTargetIdFromInviteId,
   addTeamMember,
+  getTags,
 } from '../firestore';
 import { AuthStateService } from '../services/auth-state.service';
 import { TasksService } from '../services/tasks.service';
 import { AuthService } from '../services/auth.service';
-import { Task, Comment, AddTaskInput, initialTask } from '../types/task';
+import { Task, Comment, AddTaskInput, initialTask, AddTagInput, Tag } from '../types/task';
 import { ModalService, ModalState } from '../services/modal.service';
 import { logout } from '../auth';
 import { User } from '../types/user';
@@ -63,6 +63,9 @@ export class HomeComponent {
   isSidebarOpen: boolean = true;
   sidebarTabs: 'tasks' | 'projects' | 'teams' = 'tasks';
   addingTask: AddTaskInput = { ...initialTask };
+  taskTags: Tag[] = [];
+  newTagName = '';
+  newTagColor = '#5a7d52';
   addingSubTask: Task | null = null;
   commentContent: string = '';
 
@@ -84,10 +87,10 @@ export class HomeComponent {
 
       if (state.isOpen && state.type === 'task-edit') {
         const task = state.data as Task;
-
-        // this.currentTask = task;
-
-        this.tasksService.editingTask = { ...task };
+        this.tasksService.editingTask = { ...task, tagIds: task.tagIds ?? [] };
+        void this.loadTaskTags();
+      } else if (state.isOpen && state.type === 'task-add') {
+        void this.loadTaskTags();
       }
     });
   }
@@ -103,7 +106,8 @@ export class HomeComponent {
   }
 
   resetTask() {
-    this.tasksService.editingTask = { ...this.modalState.data as Task };
+    const task = this.modalState.data as Task;
+    this.tasksService.editingTask = { ...task, tagIds: task.tagIds ?? [] };
   }
 
   // フィールドを追加
@@ -135,7 +139,7 @@ export class HomeComponent {
   }
   // タスク
   // タスク追加
-  async addTask() {
+  async addTask(type: 'myTasks' | 'projectTasks' | 'teamTasks') {
     try {
       // ログインが必要
       const uid = this.authState.uid;
@@ -143,6 +147,14 @@ export class HomeComponent {
 
       // ユーザーIDの設定
       this.addingTask.uid = uid;
+
+      // プロジェクトIDの設定
+      if(type === 'projectTasks') {
+        console.log('modalState.data.id', this.modalState.data.id);
+        this.addingTask.projectId = this.modalState.data.id;
+      } else if(type === 'teamTasks') {
+        this.addingTask.teamId = this.modalState.data.id;
+      }
 
       // 担当者の設定
       if(!this.addingTask.teamId && !this.addingTask.projectId) {
@@ -159,6 +171,7 @@ export class HomeComponent {
 
       // 追加タスクをリセット
       this.addingTask = { ...initialTask };
+      this.newTagName = '';
     } catch (error) {
       console.error("タスク追加失敗: ", error);
     }
@@ -197,11 +210,72 @@ export class HomeComponent {
         memo: task.memo ?? null,
         assignedUid: task.assignedUid ?? null,
         teamId: task.teamId ?? null,
+        tagIds: task.tagIds ?? [],
       }
       await updateTask(task.id, addTaskInput);
       this.tasksService.updateTask(task);
     } catch (error) {
       console.error("タスク更新失敗: ", error);
+    }
+  }
+  toggleAddingTaskTag(tagId: string, checked: boolean) {
+    const cur = this.addingTask.tagIds ?? [];
+    if (checked && !cur.includes(tagId)) {
+      this.addingTask = { ...this.addingTask, tagIds: [...cur, tagId] };
+    } else if (!checked) {
+      this.addingTask = { ...this.addingTask, tagIds: cur.filter((id) => id !== tagId) };
+    }
+  }
+  toggleEditingTaskTag(tagId: string, checked: boolean) {
+    const t = this.tasksService.editingTask;
+    const cur = t.tagIds ?? [];
+    if (checked && !cur.includes(tagId)) {
+      t.tagIds = [...cur, tagId];
+    } else if (!checked) {
+      t.tagIds = cur.filter((id) => id !== tagId);
+    }
+  }
+
+  // タグ
+  // タグの取得
+  async loadTaskTags() {
+    const uid = this.authState.uid;
+    if (!uid) return;
+    try {
+      this.taskTags = (await getTags(uid)) as Tag[];
+    } catch (error) {
+      console.error('タグ取得失敗: ', error);
+    }
+  }
+  // タグの作成
+  async createTag() {
+    const name = this.newTagName.trim();
+    const uid = this.authState.uid;
+    if (!name || !uid) return;
+    try {
+      const inputTag: AddTagInput = {
+        name,
+        color: this.newTagColor || '#5a7d52',
+        createdByUid: uid,
+        isDefault: false,
+      };
+      const newTag = (await addTag(inputTag)) as Tag;
+      this.taskTags = [...this.taskTags, newTag];
+      if (this.modalState.type === 'task-edit' || this.modalState.type === 'team-task-detail') {
+        const t = this.tasksService.editingTask;
+        const cur = t.tagIds ?? [];
+        if (!cur.includes(newTag.id)) {
+          t.tagIds = [...cur, newTag.id];
+        }
+      } else {
+        const cur = this.addingTask.tagIds ?? [];
+        if (!cur.includes(newTag.id)) {
+          this.addingTask = { ...this.addingTask, tagIds: [...cur, newTag.id] };
+        }
+      }
+      this.newTagName = '';
+    } catch (error) {
+      console.error('タグ作成失敗: ', error);
     }
   }
 
@@ -251,6 +325,7 @@ export class HomeComponent {
             projectId: task.projectId ?? null,
             teamId: task.teamId ?? null,
             assignedUid: task.assignedUid ?? null,
+            tagIds: task.tagIds ?? [],
         }
         const newTask = await addTask(addTaskInput);
         return newTask;
@@ -318,6 +393,7 @@ export class HomeComponent {
     console.error("コメント追加失敗: ", error);
     }
   }
+  // コメントの削除
   async deleteComment(commentId: string) {
     try {
       await deleteComment(commentId);
@@ -370,7 +446,6 @@ export class HomeComponent {
         visibility: project.visibility,
         description: project.description,
         teamId: project.teamId ?? null,
-        projectMembers: project.projectMembers ?? null,
       }
       await updateProject(project.id, updateProjectInput);
       this.modalService.close();

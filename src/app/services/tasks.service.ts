@@ -4,6 +4,7 @@ import {
     getTask,
     existsNotification,
     addNotification,
+    getProject,
  } from '../firestore';
 import { FilterKey, SortKey, Task, initialTask } from '../types/task';
 import { AuthStateService } from './auth-state.service';
@@ -79,6 +80,42 @@ export class TasksService {
         this.tasks().filter(task => task.projectId === null && task.teamId === null && task.status === '完了')
     );
 
+    /** マイタスク画面の検索語（変更のたびに一覧・ボードなどが再計算される） */
+    searchQuery = signal('');
+
+    filteredTodoTasks = computed(() =>
+        this.filterTasksBySearchQuery(this.todoTasks()),
+    );
+    filteredInProgressTasks = computed(() =>
+        this.filterTasksBySearchQuery(this.inProgressTasks()),
+    );
+    filteredOnHoldTasks = computed(() =>
+        this.filterTasksBySearchQuery(this.onHoldTasks()),
+    );
+    filteredDoneTasks = computed(() =>
+        this.filterTasksBySearchQuery(this.doneTasks()),
+    );
+
+    /** Firestore が string 以外を返した場合にも対応。NFKC で全角半角などを揃えて日本語も一致させる */
+    private normalizeForSearch(value: unknown): string {
+        const s = value == null ? '' : String(value);
+        try {
+            return s.normalize('NFKC').trim().toLowerCase();
+        } catch {
+            return s.trim().toLowerCase();
+        }
+    }
+
+    private filterTasksBySearchQuery(tasks: Task[]): Task[] {
+        const q = this.normalizeForSearch(this.searchQuery());
+        if (!q) return tasks;
+        return tasks.filter((t) => {
+            const title = this.normalizeForSearch(t.title);
+            const memo = this.normalizeForSearch(t.memo);
+            return title.includes(q) || memo.includes(q);
+        });
+    }
+
     // タスクを読み込む
     async loadMainTasks() {
         try {
@@ -127,12 +164,12 @@ export class TasksService {
       this.progressFilter = null;
     }
     // 期日
-    dueDateFilter: '今日' | '明日' | '未設定' | null = null;
+    dueDateFilter: '今日' | '明日' | '1週間' | '未設定' | null = null;
     isDueDateFilterOpen: boolean = false;
     toggleDueDateFilter() {
       this.isDueDateFilterOpen = !this.isDueDateFilterOpen;
     }
-    selectDueDate(value: '今日' | '明日' | '未設定' | null) {
+    selectDueDate(value: '今日' | '明日' | '1週間' | '未設定' | null) {
       this.dueDateFilter = value;
       this.isDueDateFilterOpen = false;
     }
@@ -163,9 +200,11 @@ export class TasksService {
         }
         if(this.dueDateFilter) {
             if(this.dueDateFilter === '今日') {
-                tasks = tasks.filter(task => task.dueDate && this.isDueDateToday(task.dueDate));
+                tasks = tasks.filter(task => task.dueDate && this.isDueDateWithin(task.dueDate, 0));
             } else if(this.dueDateFilter === '明日') {
-                tasks = tasks.filter(task => task.dueDate && this.isDueDateTomorrow(task.dueDate));
+                tasks = tasks.filter(task => task.dueDate && this.isDueDateWithin(task.dueDate, 1));
+            } else if(this.dueDateFilter === '1週間') {
+                tasks = tasks.filter(task => task.dueDate && this.isDueDateWithin(task.dueDate, 7));
             } else if(this.dueDateFilter === '未設定') {
                 tasks = tasks.filter(task => task.dueDate === null);
             }
@@ -196,7 +235,9 @@ export class TasksService {
                 return 0;
             });
         }
-        return tasks;
+
+        // 検索
+        return this.filterTasksBySearchQuery(tasks);
     }
     getTimeValue(value: any): number {
         if (!value) return 0;
@@ -251,7 +292,7 @@ export class TasksService {
             // 期日未設定タスクは通知しない
             if(!task.dueDate) continue;
             // 期日が明日でないなら通知しない
-            if(!this.isDueDateTomorrow(task.dueDate)) continue;
+            if(!this.isDueDateWithin(task.dueDate, 1)) continue;
             // 通知先の設定
             const recieverUid = task.assignedUid ?? task.uid;
             // 通知がすでにされているか
@@ -275,22 +316,64 @@ export class TasksService {
         console.error('期限が近いタスクの通知作成失敗: ', error);
         }
     }
-    // 期日が今日かどうか
-    isDueDateToday(dueDate: string) {
+    // 期日が指定した日付以内かどうか
+    isDueDateWithin(dueDate: string, days: number) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        const date = new Date(today);
+        date.setDate(date.getDate() + days);
+        date.setHours(0, 0, 0, 0);
         const due = new Date(dueDate);
         due.setHours(0, 0, 0, 0);
-        return today.getTime() === due.getTime();
+        return due.getTime() >= today.getTime() && due.getTime() <= date.getTime();
     }
-    // 期日が明日かどうか
-    isDueDateTomorrow(dueDate: string) {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(0, 0, 0, 0);
-        const due = new Date(dueDate);
-        due.setHours(0, 0, 0, 0);
-        return tomorrow.getTime() === due.getTime();
+
+    // コメント
+    // コメント時間の表示を取得
+    displayCommentTime(createdAt: unknown): string {
+        const timeMs = this.parseCommentTimestamp(createdAt);
+        if (timeMs === null) return '';
+
+        const now = Date.now();
+        const diffMs = now - timeMs;
+        if (diffMs < 0) return this.formatCommentAbsolute(timeMs);
+
+        if (diffMs < 60_000) return 'たった今';
+
+        const minutes = Math.floor(diffMs / 60_000);
+        if (minutes < 60) return `${minutes}分前`;
+
+        const hours = Math.floor(diffMs / 3_600_000);
+        if (hours < 24) return `${hours}時間前`;
+
+        return this.formatCommentAbsolute(timeMs);
+    }
+    //
+    private formatCommentAbsolute(timeMs: number): string {
+        return new Date(timeMs).toLocaleString('ja-JP', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        });
+    }
+    // コメント時間の解析
+    private parseCommentTimestamp(value: unknown): number | null {
+        if (value == null || value === '') return null;
+        if (typeof value === 'object' && value !== null) {
+        const v = value as { toDate?: () => Date; seconds?: number };
+        if (typeof v.toDate === 'function') {
+            const t = v.toDate().getTime();
+            return Number.isNaN(t) ? null : t;
+        }
+        if (typeof v.seconds === 'number') {
+            return v.seconds * 1000;
+        }
+        }
+        const d = new Date(value as string);
+        const t = d.getTime();
+        return Number.isNaN(t) ? null : t;
     }
 }
-

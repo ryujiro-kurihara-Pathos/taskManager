@@ -1,7 +1,19 @@
 <div class="project-detail-container">
     @if (project) {
-        <header class="project-detail-header">
-            <p>{{ project.name }}</p>
+        <header class="tasks-header">
+            <p class="tasks-header-title">{{ project.name }}</p>
+            <div class="project-header-actions">
+              <button type="button" class="toolbar-btn" (click)="openProjectEditModal(project)">編集</button>
+              <button type="button" class="toolbar-btn" (click)="openProjectInviteModal(project)">招待</button>
+              <div class="member-list" (click)="openMemberListModal(project)" title="メンバー一覧">
+                @for (member of project.projectMembers; track member.id) {
+                  <div class="member-circle">
+                    <p class="member-circle-text">{{ member.user?.userName?.charAt(0) }}</p>
+                  </div>
+                }
+              </div>
+              <button type="button" class="danger-btn" (click)="leaveProject(project.id)">退出</button>
+            </div>
         </header>
         <nav class="display-switch-container" aria-label="表示形式">
             <button
@@ -29,18 +41,8 @@
               カレンダー
             </button>
         </nav>
-        <div class="project-detail-toolbar">
-            <button type="button" class="task-add-btn" (click)="openTaskAddModal(project)">タスクを追加</button>
-            <button type="button" class="edit-btn" (click)="openProjectEditModal(project)">編集</button>
-             <button type="button" class="project-leave-btn" (click)="leaveProject(project.id)">プロジェクトを抜ける</button>
-             <div class="member-list">
-                @for (member of project.projectMembers; track member.id) {
-                  <div class="member-circle" (click)="openMemberListModal(project)">
-                    <p class="member-circle-text">{{ member.user?.userName?.charAt(0) }}</p>
-                  </div>
-                }
-             </div>
-            <button type="button" class="invite-btn" (click)="openProjectInviteModal(project)">招待</button>
+        <div class="tasks-tool-row">
+            <button type="button" class="add-task-btn" (click)="openTaskAddModal(project)">+ タスクを追加</button>
         </div>
         
         @if (displayFormat === 'list') {
@@ -130,18 +132,30 @@
     font-size: 14px;
     color: #666;
   }
-  .project-detail-header {
+  .tasks-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 16px 0;
     border-bottom: 1px solid #e0e0e0;
+    gap: 12px;
   }
-  .project-detail-header p {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 700;
-      color: #1a1a1a;
+  .tasks-header-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a1a1a;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .project-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .display-switch-container {
       display: flex;
@@ -168,14 +182,15 @@
       font-weight: 600;
   }
 
-  .project-detail-toolbar {
+  .tasks-tool-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
+    margin-top: 8px;
   }
-  .task-add-btn {
+  .add-task-btn {
     padding: 8px 16px;
     background: #4ea356;
     color: #fff;
@@ -185,44 +200,35 @@
     font-size: 14px;
     font-weight: 500;
   }
-  .task-add-btn:hover {
+  .add-task-btn:hover {
     background: #255c2b;
   }
-  .edit-btn {
-    padding: 8px 14px;
+  .toolbar-btn {
+    height: 34px;
+    padding: 0 12px;
     border: 1px solid #c8ccc9;
-    border-radius: 6px;
     background: #f9fafb;
-    cursor: pointer;
-    font-size: 14px;
-  }
-  .edit-btn:hover {
-    background: #ebf1ee;
-  }
-  .project-leave-btn {
-    padding: 8px 14px;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    background: #fff;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 14px;
     color: #333;
   }
-  .project-leave-btn:hover {
-    background: #f9fafb;
+  .toolbar-btn:hover {
+    background-color: #ebf1ee;
   }
-  .invite-btn {
-    padding: 8px 16px;
-    color: white;
-    background-color: #4ea356;
-    border: none;
-    border-radius: 6px;
+  .danger-btn {
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
     cursor: pointer;
     font-size: 14px;
-    font-weight: 500;
+    color: #8b2942;
   }
-  .invite-btn:hover {
-    background-color: #255c2b;
+  .danger-btn:hover {
+    background: #fff5f7;
+    border-color: #d7a2ad;
   }
   .member-list {
     display: flex;

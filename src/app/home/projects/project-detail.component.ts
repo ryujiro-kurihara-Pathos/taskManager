@@ -64,7 +64,7 @@ export class ProjectDetailComponent {
 
     // タスク追加モーダルを開く
     openTaskAddModal(project: Project) {
-        this.modalService.open('task-add', project);
+        this.modalService.open('project-add-task', project);
     }
 
     closeTaskAddModal() {
@@ -112,6 +112,7 @@ export class ProjectDetailComponent {
                 projectId: this.projectId,
                 assignedUid: null,
                 teamId: null,
+                tagIds: [],
             }
             const newTask = await addTask(task);
             if (!newTask) return;

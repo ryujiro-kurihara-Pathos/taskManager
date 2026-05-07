@@ -5,41 +5,79 @@
     </header>
     <div class="project-main">
         <div class="project-search-wrapper">
-            <input type="text" 
-            class="project-search-input"
-            placeholder="プロジェクトを見つける">
+            <input
+              type="text"
+              class="project-search-input"
+              placeholder="プロジェクトを見つける"
+              autocomplete="off"
+              [value]="searchQuery()"
+              (input)="searchQuery.set($any($event.target).value)"
+              (compositionend)="searchQuery.set($any($event.target).value)"
+            />
         </div>
         <div class="project-list-wrapper">
             <div class="project-list-header">
                 <span>名前</span>
+                <span>タスク数</span>
                 <span>メンバー</span>
-                <span class="right-align">操作</span>
+                <span class="right-align">最終更新</span>
             </div>
             <div class="project-item-wrapper">
-                @for (project of projects; track project.id) {
+                @for (project of filteredProjects(); track project.id) {
                     <a class="project-item" [routerLink]="['/home/projects', project.id]">
                         <div class="project-left">
                             <div class="project-name">{{ project.name }}</div>
                         </div>
-        
+                        <div class="project-task-count">{{ project.taskCount ?? 0 }}</div>
                         <div class="project-members">
-                            @for (member of project.projectMembers; track member.id) {
+                            @for (member of (project.projectMembers ?? []); track member.id) {
                                 <div class="avatar">{{ member.user?.userName?.charAt(0) ?? '' }}</div>
                             }
                         </div>
                     
-                        <div class="project-last-updated">1時間前</div>
+                        <div class="project-last-updated">{{ tasksService.displayCommentTime(project.updatedAt) }}</div>
                     </a>
                 }
             </div>
         </div>
         @if (isProjectAddModalOpen) {
-            <div class="project-add-modal">
-                <input type="text" 
-                placeholder="プロジェクト名"
-                [(ngModel)]="newProjectName">
-                <button type="button" (click)="closeProjectAddModal()">×</button>
-                <button type="button" (click)="addProject()">作成</button>
+            <div class="modal" (click)="closeProjectAddModal()">
+                <div class="modal-form project-add-modal" (click)="$event.stopPropagation()">
+                    <div class="modal-top">
+                        <p class="modal-title">プロジェクトを作成</p>
+                        <button type="button" class="modal-close-btn" (click)="closeProjectAddModal()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="modal-item">
+                            <p class="modal-label">プロジェクト名</p>
+                            <input
+                                type="text"
+                                [(ngModel)]="newProjectName"
+                                placeholder="プロジェクト名を入力してください"
+                                class="modal-text-input"
+                            />
+                        </div>
+                        <div class="modal-item">
+                            <p class="modal-label">公開設定</p>
+                            <select class="modal-text-input" [(ngModel)]="newProjectVisibility">
+                                <option value="private">非公開</option>
+                                <option value="members">公開</option>
+                            </select>
+                        </div>
+                        <div class="modal-item">
+                            <p class="modal-label">説明</p>
+                            <input
+                                type="text"
+                                [(ngModel)]="newProjectDescription"
+                                placeholder="説明（任意）"
+                                class="modal-text-input"
+                            />
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="modal-primary-btn" (click)="addProject()">作成</button>
+                    </div>
+                </div>
             </div>
         }
     </div>
@@ -75,6 +113,100 @@
         font-weight: 500;
     }
     .project-add-btn:hover {
+        background-color: #255c2b;
+    }
+    .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 16px;
+        box-sizing: border-box;
+    }
+    .modal-form {
+        width: min(560px, 100%);
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+    }
+    .modal-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-bottom: 1px solid #eee;
+    }
+    .modal-title {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+    }
+    .modal-close-btn {
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 20px;
+        line-height: 1;
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+    .modal-close-btn:hover {
+        background: #f2f2f2;
+    }
+    .modal-body {
+        padding: 16px;
+    }
+    .modal-item {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 14px;
+    }
+    .modal-label {
+        margin: 0;
+        min-width: 96px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #555;
+    }
+    .modal-text-input {
+        flex: 1;
+        min-width: 180px;
+        padding: 10px 12px;
+        border: 1px solid #c8ccc9;
+        border-radius: 8px;
+        font-size: 14px;
+        box-sizing: border-box;
+        background-color: #f9fafb;
+    }
+    .modal-text-input:focus {
+        outline: none;
+        border-color: #4ea356;
+        background-color: #fff;
+        box-shadow: 0 0 0 2px rgba(78, 163, 86, 0.18);
+    }
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        padding: 12px 16px 16px;
+        border-top: 1px solid #eee;
+    }
+    .modal-primary-btn {
+        padding: 8px 16px;
+        background-color: #4ea356;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    .modal-primary-btn:hover {
         background-color: #255c2b;
     }
     .project-main {
@@ -167,42 +299,4 @@
         line-height: 24px;
     }
 
-    .project-add-modal {
-        margin-top: 16px;
-        padding: 16px;
-        background-color: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 12px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        align-items: center;
-    }
-    .project-add-modal input {
-        flex: 1;
-        min-width: 160px;
-        padding: 8px 12px;
-        border: 1px solid #c8ccc9;
-        border-radius: 6px;
-        font-size: 14px;
-    }
-    .project-add-modal button {
-        padding: 8px 14px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 14px;
-        border: 1px solid #c8ccc9;
-        background: #f9fafb;
-    }
-    .project-add-modal button:last-of-type {
-        background: #4ea356;
-        color: #fff;
-        border-color: #4ea356;
-        font-weight: 500;
-    }
-    .project-add-modal button:last-of-type:hover {
-        background: #255c2b;
-        border-color: #255c2b;
-    }
 </style>

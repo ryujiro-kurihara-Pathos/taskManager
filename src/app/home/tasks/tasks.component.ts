@@ -7,7 +7,7 @@ import { AuthStateService } from '../../services/auth-state.service';
 import { AuthService } from '../../services/auth.service';
 import { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { DragDropModule } from '@angular/cdk/drag-drop';
-import { updateTask } from '../../firestore';
+import { deleteChildrenTask, updateTask } from '../../firestore';
 
 @Component({
     selector: 'app-tasks',
@@ -80,26 +80,43 @@ export class TaskComponent {
     }
   }
 
-  // タスク選択
-  toggleTaskSelection(taskId: string) {
-      // if(this.selectedTaskIds.includes(taskId)) {
-      // this.selectedTaskIds = this.selectedTaskIds.filter(id => id !== taskId);
-      // } else {
-      // this.selectedTaskIds.push(taskId);
-      // }
+  onRowCheckboxChange(taskId: string, checked: boolean) {
+    if (checked) {
+      if (!this.selectedTaskIds.includes(taskId)) {
+        this.selectedTaskIds = [...this.selectedTaskIds, taskId];
+      }
+    } else {
+      this.selectedTaskIds = this.selectedTaskIds.filter((id) => id !== taskId);
+    }
   }
-  // タスク一括削除
-  async deleteSelectedTask() {
-      try {
-      for(const taskId of this.selectedTaskIds) {
-          // await deleteTask(taskId);
-      }
 
-      // await this.loadMainTasks();
-      this.selectedTaskIds = [];
-      } catch (error) {
-      console.error("タスク一括削除失敗: ", error);
+  isAllDisplayedNotDoneSelected(): boolean {
+    const tasks = this.displayTasks('notDone');
+    return tasks.length > 0 && tasks.every((t) => this.selectedTaskIds.includes(t.id));
+  }
+
+  onToggleSelectAllNotDone(checked: boolean) {
+    const ids = this.displayTasks('notDone').map((t) => t.id);
+    if (checked) {
+      this.selectedTaskIds = [...new Set([...this.selectedTaskIds, ...ids])];
+    } else {
+      const drop = new Set(ids);
+      this.selectedTaskIds = this.selectedTaskIds.filter((id) => !drop.has(id));
+    }
+  }
+
+  async deleteSelectedTask() {
+    if (this.selectedTaskIds.length === 0) return;
+    const ids = [...this.selectedTaskIds];
+    try {
+      for (const taskId of ids) {
+        await deleteChildrenTask(taskId);
+        this.tasksService.deleteTask(taskId);
       }
+      this.selectedTaskIds = [];
+    } catch (error) {
+      console.error('タスク一括削除失敗: ', error);
+    }
   }
 
   // 画面に表示するタスク
@@ -238,12 +255,6 @@ export class TaskComponent {
 
       return `${year}-${month}-${day}`;
   }
-  dummyTasks = [
-    { id: '1', title: '買い物', startDate: '2026-04-20', dueDate: '2026-04-20' },
-    { id: '2', title: '課題提出', startDate: '2026-04-20', dueDate: '2026-04-22' },
-    { id: '3', title: 'MTG', startDate: '2026-04-22', dueDate: '2026-04-24' },
-    { id: '4', title: 'テスト', startDate: new Date().toISOString().split('T')[0], dueDate: '2026-05-01' },
-  ];
   getWeekTasks() {
     if (this.weekDates.length === 0) return [];
   
