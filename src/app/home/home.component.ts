@@ -28,13 +28,13 @@ import {
   getTargetIdFromInviteId,
   addTeamMember,
   getTags,
+  getTagsByIds,
 } from '../firestore';
 import { AuthStateService } from '../services/auth-state.service';
 import { TasksService } from '../services/tasks.service';
 import { AuthService } from '../services/auth.service';
 import { Task, Comment, AddTaskInput, initialTask, AddTagInput, Tag } from '../types/task';
 import { ModalService, ModalState } from '../services/modal.service';
-import { logout } from '../auth';
 import { User } from '../types/user';
 import { AddInviteInput, initialInviteInput } from '../types/Invite';
 import { Project, AddProjectInput, ProjectMember, AddProjectMemberInput } from '../types/project';
@@ -66,8 +66,25 @@ export class HomeComponent {
   taskTags: Tag[] = [];
   newTagName = '';
   newTagColor = '#5a7d52';
+  /** タグ色はプリセットから選択（自由入力しない） */
+  readonly tagColorPresets: string[] = [
+    '#1b5214', // deep green
+    '#4ea356', // green
+    '#5a7d52', // olive
+    '#2a5327', // forest
+    '#0d47a1', // blue
+    '#6a1b9a', // purple
+    '#e65100', // orange
+    '#c62828', // red
+    '#455a64', // blue grey
+    '#827717', // lime
+  ];
   addingSubTask: Task | null = null;
   commentContent: string = '';
+
+  selectNewTagColor(color: string) {
+    this.newTagColor = color;
+  }
 
   // プロジェクト
   inviteInput: AddInviteInput = initialInviteInput;
@@ -99,7 +116,7 @@ export class HomeComponent {
     const type = this.modalState.type;
     if(type === 'task-edit' || type === 'team-task-detail') {
       this.tasksService.editingTask = { ...initialTask as Task };
-    } else if(type === 'project-invite' || type === 'team-member-detail') {
+    } else if(type === 'project-invite' || type === 'project-edit' || type === 'team-member-detail') {
       this.inviteEmail = '';
     }
     this.modalService.close();
@@ -127,16 +144,6 @@ export class HomeComponent {
     this.isSidebarOpen = !this.isSidebarOpen;
   }
 
-  // ユーザー情報
-  // ログアウト
-  async onLogout() {
-    try {
-      await logout();
-      this.router.navigate(['/login']);
-    } catch (error) {
-      console.error(error);
-    }
-  }
   // タスク
   // タスク追加
   async addTask(type: 'myTasks' | 'projectTasks' | 'teamTasks') {
@@ -164,7 +171,7 @@ export class HomeComponent {
       // タスクの追加
       const newTask = await addTask(this.addingTask);
       if(!newTask) return;
-      this.tasksService.addTask(newTask as Task);
+      this.tasksService.addTaskToTasks(newTask as Task);
 
       // モーダルを閉じる
       this.closeModal();
@@ -212,8 +219,8 @@ export class HomeComponent {
         teamId: task.teamId ?? null,
         tagIds: task.tagIds ?? [],
       }
-      await updateTask(task.id, addTaskInput);
-      this.tasksService.updateTask(task);
+      const updatedTask = await updateTask(task.id, addTaskInput);
+      this.tasksService.updateTask(updatedTask);
     } catch (error) {
       console.error("タスク更新失敗: ", error);
     }
@@ -255,7 +262,7 @@ export class HomeComponent {
     try {
       const inputTag: AddTagInput = {
         name,
-        color: this.newTagColor || '#5a7d52',
+        color: this.newTagColor || this.tagColorPresets[0],
         createdByUid: uid,
         isDefault: false,
       };
@@ -355,7 +362,8 @@ export class HomeComponent {
     const isExisting = await isExistingCollection('tasks', task.id);
     if(!isExisting) return;
     try {
-      this.tasksService.editingTask = { ...task };
+      // tagIds が未設定のタスク（サブタスク等）でもテンプレ側で落ちないように補正
+      this.tasksService.editingTask = { ...task, tagIds: task.tagIds ?? [] };
       await this.modalService.open('task-edit', this.tasksService.editingTask);
     } catch (error) {
       console.error("編集中のタスク変更失敗: ", error);
@@ -405,7 +413,8 @@ export class HomeComponent {
 
   // プロジェクト
   // プロジェクトへの招待
-  async invite(type: 'project' | 'team', targetId: string) {
+  /** @param closeModalAfterInvite 編集モーダル内から呼ぶときは false */
+  async invite(type: 'project' | 'team', targetId: string, closeModalAfterInvite = true) {
     try {
       const isInvited = await invite(
         type,
@@ -415,9 +424,26 @@ export class HomeComponent {
         this.authState.uid,
       );
       if (!isInvited) return;
-      this.closeModal();
+      this.inviteEmail = '';
+      if (closeModalAfterInvite) {
+        this.closeModal();
+      }
     } catch (error) {
       console.error("招待失敗: ", error);
+    }
+  }
+
+  /** プロジェクト詳細ヘッダーから移設：管理者以外がメンバーから外れる */
+  async leaveProjectFromEdit(project: Project) {
+    try {
+      const uid = this.authState.uid;
+      if (!uid) return;
+      if (await isAdmin(uid, project.id)) return;
+      await deleteProjectMember(uid, project.id);
+      this.closeModal();
+      await this.router.navigate(['/home/projects']);
+    } catch (error) {
+      console.error('プロジェクトからの退出に失敗しました', error);
     }
   }
   // そのメンバーが自分かどうか
@@ -448,6 +474,7 @@ export class HomeComponent {
         teamId: project.teamId ?? null,
       }
       await updateProject(project.id, updateProjectInput);
+      this.inviteEmail = '';
       this.modalService.close();
     } catch (error) {
       console.error("プロジェクト編集保存失敗: ", error);
@@ -545,5 +572,52 @@ export class HomeComponent {
     } catch (error) {
       console.error("受信トレイからタスクへ移動失敗: ", error);
     }
+  }
+
+  notificationTypeLabel(type: string | undefined): string {
+    switch (type) {
+      case 'project-invite':
+        return 'プロジェクト招待';
+      case 'team-invite':
+        return 'チーム招待';
+      case 'task-deadline':
+        return 'タスク・期限';
+      default:
+        return '通知';
+    }
+  }
+
+  notificationIconModifier(type: string | undefined): string {
+    switch (type) {
+      case 'project-invite':
+        return 'project';
+      case 'team-invite':
+        return 'team';
+      case 'task-deadline':
+        return 'deadline';
+      default:
+        return 'default';
+    }
+  }
+
+  notificationSentAt(createdAt: unknown): string {
+    return this.tasksService.displayTime(createdAt);
+  }
+
+  /** 自動通知以外の送信者表示用（名前は ModalService で fromUid から補完済みを想定） */
+  notificationSenderRoleLabel(type: string | undefined): string {
+    switch (type) {
+      case 'project-invite':
+      case 'team-invite':
+        return '招待者';
+      default:
+        return '送信元';
+    }
+  }
+
+  notificationSenderName(data: { fromName?: string; fromUid?: string | null }): string {
+    if (data.fromName?.trim()) return data.fromName.trim();
+    if (data.fromUid) return '名前を取得できませんでした';
+    return '不明';
   }
 }

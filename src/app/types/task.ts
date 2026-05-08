@@ -19,6 +19,7 @@ export type Task = {
     updatedAt: string;
 
     tagIds: string[];
+    tags: Tag[] | null;
 
     comments: Comment[]; // コメント
     subTasks: Task[]; // サブタスク
@@ -29,7 +30,7 @@ export type Task = {
     teamId: string | null; // チームID
 };
 
-export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'assignableUsers' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
+export type AddTaskInput = Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'assignableUsers' | 'tags' | 'comments' | 'subTasks' | 'hierarchyTask' | 'originalTitle'>;
 
 export const initialTask: AddTaskInput = {
     uid: '',

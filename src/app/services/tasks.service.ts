@@ -5,11 +5,18 @@ import {
     existsNotification,
     addNotification,
     getProject,
+    getTagsByIds,
  } from '../firestore';
 import { FilterKey, SortKey, Task, initialTask } from '../types/task';
 import { AuthStateService } from './auth-state.service';
 import { AddNotificationInput } from '../types/notification';
 import { User } from '../types/user';
+import { Tag } from '../types/task';
+
+/** マイタスク画面 vs チーム詳細（TasksService.tasks のスコープ解釈） */
+export type TaskListContext =
+    | { mode: 'main' }
+    | { mode: 'team'; teamId: string };
 
 @Injectable({
     providedIn: 'root'
@@ -18,6 +25,31 @@ import { User } from '../types/user';
 export class TasksService {
     tasks = signal<Task[]>([]);
     authState = inject(AuthStateService);
+
+    /** 一覧・ボード・getDisplayTasks の対象タスク集合（既定: 個人のみ） */
+    taskListContext = signal<TaskListContext>({ mode: 'main' });
+
+    /** チーム詳細で tasks.component と同等 UI を表示するときに呼ぶ */
+    setTaskListContextTeam(teamId: string) {
+        this.taskListContext.set({ mode: 'team', teamId });
+    }
+
+    /** マイタスク等に戻るとき */
+    setTaskListContextMain() {
+        this.taskListContext.set({ mode: 'main' });
+    }
+
+    /** 一覧・検索対象となるタスク（コンテキストに応じて絞り込み） */
+    private scopedTasksSource = computed(() => {
+        const ctx = this.taskListContext();
+        const all = this.tasks();
+        if (ctx.mode === 'main') {
+            return all.filter(
+                (task) => task.projectId === null && task.teamId === null,
+            );
+        }
+        return all.filter((task) => task.teamId === ctx.teamId);
+    });
     // 表示形式
     displayFormat: 'list' | 'board' | 'calendar' = 'list';
 
@@ -30,6 +62,7 @@ export class TasksService {
         createdAt: '',
         updatedAt: '',
         assignableUsers: [],
+        tags: [],
         comments: [],
         subTasks: [],
         hierarchyTask: [],
@@ -46,12 +79,35 @@ export class TasksService {
     }
 
     async clearTasks() {
+        this.setTaskListContextMain();
         this.tasks.set([]);
         this.displayFormat = 'list';
         await this.loadMainTasks();
     }
 
-    addTask(task: Task) {
+    // タスクを読み込む
+    async loadMainTasks() {
+        try {
+            const tasks = await getMainTasks(this.authState.uid);
+            // タグの取得
+            tasks.forEach(async (task) => {
+                const tags = await getTagsByIds(task.tagIds);
+                task.tags = tags;
+            });
+            // 取得待ちの間にチーム詳細へ遷移した場合は一覧を上書きしない
+            if (this.taskListContext().mode !== 'main') {
+                return;
+            }
+            this.setTasks(tasks);
+
+            // 期日が近いタスクの通知を作成
+            await this.createTaskDeadlineNotification(tasks);
+        } catch (error) {
+            console.error('タスク読み込み失敗: ', error);
+        }
+    }
+
+    addTaskToTasks(task: Task) {
         this.tasks.update(current => [...current, task]);
     }
 
@@ -68,16 +124,16 @@ export class TasksService {
     }
 
     todoTasks = computed(() =>
-        this.tasks().filter(task => task.projectId === null && task.teamId === null && task.status === '未着手')
+        this.scopedTasksSource().filter((task) => task.status === '未着手'),
     );
     inProgressTasks = computed(() =>
-        this.tasks().filter(task => task.projectId === null && task.teamId === null && task.status === '進行中')
+        this.scopedTasksSource().filter((task) => task.status === '進行中'),
     );
     onHoldTasks = computed(() =>
-        this.tasks().filter(task => task.projectId === null && task.teamId === null && task.status === '保留')
+        this.scopedTasksSource().filter((task) => task.status === '保留'),
     );
     doneTasks = computed(() =>
-        this.tasks().filter(task => task.projectId === null && task.teamId === null && task.status === '完了')
+        this.scopedTasksSource().filter((task) => task.status === '完了'),
     );
 
     /** マイタスク画面の検索語（変更のたびに一覧・ボードなどが再計算される） */
@@ -115,21 +171,6 @@ export class TasksService {
             return title.includes(q) || memo.includes(q);
         });
     }
-
-    // タスクを読み込む
-    async loadMainTasks() {
-        try {
-            // タスクを取得
-            const tasks = await getMainTasks(this.authState.uid);
-            // タスクを設定
-            this.setTasks(tasks);
-
-            // 期日が近いタスクの通知を作成
-            await this.createTaskDeadlineNotification(tasks);
-        } catch (error) {
-            console.error('タスク読み込み失敗: ', error);
-        }
-    }
     
     // ソート
     sortKey: SortKey = null;
@@ -139,9 +180,21 @@ export class TasksService {
     priorityFilter: '高' | '中' | '低' | '未設定' | null = null;
     isPriorityFilterOpen: boolean = false;
 
+    closeAllFilterMenus() {
+      this.isPriorityFilterOpen = false;
+      this.isProgressFilterOpen = false;
+      this.isDueDateFilterOpen = false;
+      this.isTagsFilterOpen = false;
+    }
+
     // 優先度
     togglePriorityFilter() {
-      this.isPriorityFilterOpen = !this.isPriorityFilterOpen;
+      if (this.isPriorityFilterOpen) {
+        this.isPriorityFilterOpen = false;
+        return;
+      }
+      this.closeAllFilterMenus();
+      this.isPriorityFilterOpen = true;
     }
     selectPriority(value: '高' | '中' | '低' | '未設定' | null) {
       this.priorityFilter = value;
@@ -154,7 +207,12 @@ export class TasksService {
     progressFilter: '未着手' | '進行中' | '保留' | '完了' | null = null;
     isProgressFilterOpen: boolean = false;
     toggleProgressFilter() {
-      this.isProgressFilterOpen = !this.isProgressFilterOpen;
+      if (this.isProgressFilterOpen) {
+        this.isProgressFilterOpen = false;
+        return;
+      }
+      this.closeAllFilterMenus();
+      this.isProgressFilterOpen = true;
     }
     selectProgress(value: '未着手' | '進行中' | '保留' | '完了' | null) {
       this.progressFilter = value;
@@ -167,7 +225,12 @@ export class TasksService {
     dueDateFilter: '今日' | '明日' | '1週間' | '未設定' | null = null;
     isDueDateFilterOpen: boolean = false;
     toggleDueDateFilter() {
-      this.isDueDateFilterOpen = !this.isDueDateFilterOpen;
+      if (this.isDueDateFilterOpen) {
+        this.isDueDateFilterOpen = false;
+        return;
+      }
+      this.closeAllFilterMenus();
+      this.isDueDateFilterOpen = true;
     }
     selectDueDate(value: '今日' | '明日' | '1週間' | '未設定' | null) {
       this.dueDateFilter = value;
@@ -177,10 +240,30 @@ export class TasksService {
       this.dueDateFilter = null;
     }
 
+    // タグ
+    tagsFilter: string | null = null;
+    isTagsFilterOpen: boolean = false;
+    tags: Tag[] = [];
+
+    toggleTagsFilter() {
+      if (this.isTagsFilterOpen) {
+        this.isTagsFilterOpen = false;
+        return;
+      }
+      this.closeAllFilterMenus();
+      this.isTagsFilterOpen = true;
+    }
+    selectTags(value: string | null) {
+        this.tagsFilter = value;
+        this.isTagsFilterOpen = false;
+    }
+    clearTagsFilter() {
+      this.tagsFilter = null;
+    }
+
     // 画面に表示するタスクを取得
     getDisplayTasks(status: 'notDone' | 'done') {
-        // チームタスク、プロジェクトタスクは表示しない
-        let tasks = this.tasks().filter(task => task.projectId === null && task.teamId === null);
+        let tasks = [...this.scopedTasksSource()];
         if(status === 'notDone') {
             tasks = tasks.filter(task => task.status !== '完了');
         } else {
@@ -222,15 +305,15 @@ export class TasksService {
                     const bTime = this.getTimeValue(b.createdAt);
                     return bTime - aTime;
                 } else if (this.sortKey === 'updatedAt') {
-                //     const aTime = a.updatedAt
-                //     ? new Date(a.updatedAt).getTime()
-                //     : 0;
+                    const aTime = a.updatedAt
+                    ? new Date(a.updatedAt).getTime()
+                    : 0;
           
-                //   const bTime = b.updatedAt
-                //     ? new Date(b.updatedAt).getTime()
-                //     : 0;
+                  const bTime = b.updatedAt
+                    ? new Date(b.updatedAt).getTime()
+                    : 0;
           
-                //   return bTime - aTime;
+                  return bTime - aTime;
                 }
                 return 0;
             });
@@ -328,39 +411,57 @@ export class TasksService {
         return due.getTime() >= today.getTime() && due.getTime() <= date.getTime();
     }
 
-    // コメント
-    // コメント時間の表示を取得
-    displayCommentTime(createdAt: unknown): string {
-        const timeMs = this.parseCommentTimestamp(createdAt);
+    
+    // 時間の表示を取得
+    // 引数で日付までか時刻までかを指定できる
+    displayTime(createdAt: unknown, type: 'date' | 'time' = 'time'): string {
+        const timeMs = this.parseTimestamp(createdAt);
         if (timeMs === null) return '';
 
-        const now = Date.now();
-        const diffMs = now - timeMs;
-        if (diffMs < 0) return this.formatCommentAbsolute(timeMs);
+        if(type === 'date') {
+            const now = Date.now();
+            const diffMs = now - timeMs;
+            if (diffMs < 0) return this.formatAbsolute(timeMs);
 
-        if (diffMs < 60_000) return 'たった今';
+            if (diffMs < 60_000) return 'たった今';
 
-        const minutes = Math.floor(diffMs / 60_000);
-        if (minutes < 60) return `${minutes}分前`;
+            const minutes = Math.floor(diffMs / 60_000);
+            if (minutes < 60) return `${minutes}分前`;
 
-        const hours = Math.floor(diffMs / 3_600_000);
-        if (hours < 24) return `${hours}時間前`;
+            const hours = Math.floor(diffMs / 3_600_000);
+            if (hours < 24) return `${hours}時間前`;
 
-        return this.formatCommentAbsolute(timeMs);
+            const days = Math.floor(diffMs / 86_400_000);
+            if (days < 30) return `${days}日前`;
+
+            const months = Math.floor(diffMs / 2_592_000_000);
+            if (months < 12) return `${months}ヶ月前`;
+
+            const years = Math.floor(diffMs / 31_536_000_000);
+            return `${years}年前`;
+        }
+
+        return this.formatAbsolute(timeMs, type);
     }
-    //
-    private formatCommentAbsolute(timeMs: number): string {
-        return new Date(timeMs).toLocaleString('ja-JP', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-        });
+
+    /** 今年なら「M/D HH:mm」、別年なら「YYYY/M/D HH:mm」（月日はゼロ埋めなし） */
+    private formatAbsolute(timeMs: number, type: 'date' | 'time' = 'time'): string {
+        const d = new Date(timeMs);
+        const opts: Intl.DateTimeFormatOptions = {};
+            opts.month = 'numeric';
+            opts.day = 'numeric';
+        if(type === 'time') {
+            opts.hour = '2-digit';
+            opts.minute = '2-digit';
+            opts.hour12 = false;
+        }
+        if (d.getFullYear() !== new Date().getFullYear()) {
+            opts.year = 'numeric';
+        }
+        return d.toLocaleString('ja-JP', opts);
     }
-    // コメント時間の解析
-    private parseCommentTimestamp(value: unknown): number | null {
+    // 時間の解析
+    private parseTimestamp(value: unknown): number | null {
         if (value == null || value === '') return null;
         if (typeof value === 'object' && value !== null) {
         const v = value as { toDate?: () => Date; seconds?: number };

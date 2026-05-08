@@ -8,9 +8,10 @@ import {
     getDoc,
     updateDoc,
     deleteDoc,
+    documentId,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { AddTaskInput, Task, AddTagInput } from "./types/task";
+import { AddTaskInput, Task, AddTagInput, Tag } from "./types/task";
 import { Project, AddProjectInput, AddProjectMemberInput, ProjectMember } from "./types/project";
 import { Notification, AddNotificationInput } from "./types/notification";
 import { AddTeamInput, AddTeamMemberInput, Team, TeamMember } from "./types/team";
@@ -62,6 +63,7 @@ export async function getUsers(userIds: string[]) {
 export async function addTask(addTaskInput: AddTaskInput) {
     try {
         const createdAt = new Date();
+        const tags = await getTagsByIds(addTaskInput.tagIds);
         const taskDoc = await addDoc(collection(db, 'tasks'), {
             ...addTaskInput,
             createdAt: createdAt,
@@ -72,6 +74,7 @@ export async function addTask(addTaskInput: AddTaskInput) {
             createdAt: createdAt.toISOString(),
             updatedAt: createdAt.toDateString(),
             assignableUsers: [],
+            tags: tags,
             comments: [],
             subTasks: [],
             hierarchyTask: [],
@@ -142,9 +145,23 @@ export async function getAllTasks() {
 // タスクを更新
 export async function updateTask(taskId: string, inputTask: AddTaskInput) {
     try {
+        const updatedAt = new Date().toISOString();
         const taskRef = doc(db, 'tasks', taskId);
 
-        await updateDoc(taskRef, inputTask);
+        await updateDoc(taskRef, {
+            ...inputTask,
+            updatedAt: updatedAt,
+        });
+
+        const tags = await getTagsByIds(inputTask.tagIds);
+
+        const task = {
+            id: taskId,
+            ...inputTask,
+            updatedAt: updatedAt,
+            tags: tags,
+        } as Task;
+        return task;
     } catch (error) {
         throw error;
     }
@@ -226,6 +243,23 @@ export async function getTags(uid: string) {
         const tags: any[] = [];
         snapshot.forEach((doc) => {
             tags.push({ id: doc.id, ...doc.data() });
+        });
+        return tags;
+    } catch (error) {
+        throw error;
+    }
+}
+// タグIDからタグを取得
+export async function getTagsByIds(tagIds: string[]) {
+    try {
+        if(tagIds === undefined) return [];
+        if(tagIds.length === 0) return [];
+        const tagRef = collection(db, 'tags');
+        const q = query(tagRef, where(documentId(), 'in', tagIds));
+        const snapshot = await getDocs(q);
+        const tags: Tag[] = [];
+        snapshot.forEach((doc) => {
+            tags.push({ id: doc.id, ...doc.data() } as Tag);
         });
         return tags;
     } catch (error) {
@@ -325,6 +359,7 @@ export async function addProject(input: AddProjectInput) {
             ownerId: input.ownerId,
             visibility: input.visibility,
             description: input.description,
+            teamId: input.teamId ?? null,
             createdAt: createdAt,
             updatedAt: createdAt,
         });
@@ -413,7 +448,7 @@ export async function getProject(projectId: string): Promise<Project | null> {
             description: data['description'],
             createdAt: data['createdAt'],
             updatedAt: data['updatedAt'],  
-            teamId: data['teamId'],
+            teamId: data['teamId'] ?? null,
         } as Project;
 
         return project;
@@ -658,6 +693,18 @@ export async function getTaskCountByProjectId(projectId: string) {
     }
 }
 
+// チームに紐づくタスク数を取得（teamId が一致する全タスク）
+export async function getTaskCountByTeamId(teamId: string) {
+    try {
+        const taskRef = collection(db, 'tasks');
+        const q = query(taskRef, where('teamId', '==', teamId));
+        const snapshot = await getDocs(q);
+        return snapshot.size;
+    } catch (error) {
+        throw error;
+    }
+}
+
 // 受信トレイ
 // 通知の追加
 export async function addNotification(data: AddNotificationInput) {
@@ -736,17 +783,17 @@ export async function readNotification(notificationId: string) {
 // チームの追加
 export async function addTeam(addTeamInput: AddTeamInput) {
     try {
-        // チームをドキュメントに追加
-        const createdAt = new Date();
+        const now = new Date();
         const teamDoc = await addDoc(collection(db, 'teams'), {
             ...addTeamInput,
-            createdAt: new Date(),
+            createdAt: now,
+            updatedAt: now,
         });
-        // チームドキュメントのデータを取得
         const team = {
             id: teamDoc.id,
             ...addTeamInput,
-            createdAt: createdAt.toISOString(),
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString(),
         } as Team;
         return team;
     } catch (error) {

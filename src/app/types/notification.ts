@@ -20,7 +20,8 @@ export type Notification = {
     isRead: boolean; // 通知が既読かどうか
     isImportant: boolean; // 通知が重要かどうか
 
-    createdAt: string; // 通知作成日時
+    /** Firestore Timestamp / ISO 文字列 など */
+    createdAt: unknown;
 
     status?: 'pending' | 'accepted' | 'declined' | 'left'; // 招待のステータス
 }

@@ -10,6 +10,7 @@ import { AuthStateService } from '../../services/auth-state.service';
 import { Notification } from '../../types/notification';
 import { ModalService } from '../../services/modal.service';
 import { AuthService } from '../../services/auth.service';
+import { TasksService } from '../../services/tasks.service';
 
 @Component({
     selector: 'app-inbox',
@@ -21,8 +22,11 @@ export class InboxComponent {
     authState = inject(AuthStateService);
     authService = inject(AuthService);
     modalService = inject(ModalService);
-    // 通知：招待一覧
+    private tasksService = inject(TasksService);
+
+    // 通知
     notifications: Notification[] = [];
+    isReverseOrder: boolean = false;
     // タブ
     activeTab: 'all' | 'unread' | 'important' = 'all';
 
@@ -89,12 +93,44 @@ export class InboxComponent {
     }
 
     // 未読通知を取得
-    getUnreadNotifications() {
-        return this.notifications.filter((notification) => !notification.isRead);
+    get unreadNotifications() {
+        const unreadNotifications = this.notifications.filter((notification) => !notification.isRead);
+        if(this.isReverseOrder) {
+            unreadNotifications.reverse();
+        }
+        return unreadNotifications;
     }
 
     // 重要通知を取得
-    getImportantNotifications() {
-        return this.notifications.filter((notification) => notification.isImportant);
+    get importantNotifications() {
+        const importantNotifications = this.notifications.filter((notification) => notification.isImportant);
+        if(this.isReverseOrder) {
+            importantNotifications.reverse();
+        }
+        return importantNotifications;
+    }
+
+    // 通知の表示
+    get displayNotifications() {
+        const displayNotifications = this.notifications.sort((a, b) => {
+            if(!a.createdAt || !b.createdAt) return 0;
+            const aTime = this.tasksService.getTimeValue(a.createdAt);
+            const bTime = this.tasksService.getTimeValue(b.createdAt);
+            return bTime - aTime;
+        });
+        if(this.isReverseOrder) {
+            displayNotifications.reverse();
+        }
+        return displayNotifications;
+    }
+
+    // 未読件数
+    get unreadCount() {
+        return this.notifications.filter((n) => !n.isRead).length;
+    }
+
+    // 通知日時の表示
+    displayNotificationDate(notification: Notification) {
+        return this.tasksService.displayTime(notification.createdAt, 'date');
     }
 }   

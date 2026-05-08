@@ -6,10 +6,14 @@ import {
     getProjectMembers,
     getProjectsByUserId,
     getTaskCountByProjectId,
+    getTeamById,
+    getTeamIdsByUserId,
+    getTeamsByIds,
     getUser,
 } from '../../firestore';
 import { FormsModule } from '@angular/forms';
 import { AddProjectMemberInput, Project } from '../../types/project';
+import { Team } from '../../types/team';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { TasksService } from '../../services/tasks.service';
@@ -27,6 +31,8 @@ export class ProjectListComponent {
     tasksService = inject(TasksService);
 
     projects = signal<Project[]>([]);
+    /** 参加中チーム（作成モーダルの選択用） */
+    userTeams = signal<Team[]>([]);
 
     // プロジェクト検索（tasks と同仕様: IME対応は template 側、比較は NFKC 正規化）
     searchQuery = signal('');
@@ -41,22 +47,32 @@ export class ProjectListComponent {
     newProjectName = '';
     newProjectVisibility: 'private' | 'members' = 'private';
     newProjectDescription = '';
+    /** null = チームに紐づけない */
+    newProjectTeamId: string | null = null;
 
     async ngOnInit() {
         this.authService.watchAuthState(async(user) => {
             if(!user) {
                 this.projects.set([]);
+                this.userTeams.set([]);
                 return;
             }
+
+            const teamIds = [...new Set(await getTeamIdsByUserId(user.uid))];
+            this.userTeams.set(await getTeamsByIds(teamIds));
             
             // プロジェクトを取得
             const projects = await getProjectsByUserId(user.uid);
             if(!projects) return;
             this.projects.set(projects);
 
+            // タスク数、チームメンバー、チーム名を取得
             for(const project of this.projects()) {
+                // タスク数を取得
                 const taskCount = await this.getTaskCount(project.id);
                 project.taskCount = taskCount;
+
+                // チーム名を取得
                 const members = await this.getProjectMembers(project.id);
                 members.forEach(async (member) => {
                     const user = await getUser(member.userId);
@@ -64,6 +80,12 @@ export class ProjectListComponent {
                     member.user = user;
                 });
                 project.projectMembers = members;
+
+                // チーム名を取得
+                if(!project.teamId) continue;
+                const team = await getTeamById(project.teamId);
+                if(!team) return;
+                project.teamName = team.name;
             }
         });
     }
@@ -92,6 +114,7 @@ export class ProjectListComponent {
         this.newProjectName = '';
         this.newProjectVisibility = 'private';
         this.newProjectDescription = '';
+        this.newProjectTeamId = null;
     }
 
     async getTaskCount(projectId: string) {
@@ -119,7 +142,7 @@ export class ProjectListComponent {
                 ownerId: user.id,
                 visibility: this.newProjectVisibility,
                 description: this.newProjectDescription,
-                teamId: null,
+                teamId: this.newProjectTeamId,
             });
             if (!project) return;
 

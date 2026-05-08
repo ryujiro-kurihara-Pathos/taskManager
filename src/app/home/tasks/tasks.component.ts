@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, HostListener, inject } from '@angular/core';
 import { TasksService } from '../../services/tasks.service';
 import { CommonModule } from '@angular/common';
 import { ModalService } from '../../services/modal.service';
@@ -130,6 +130,7 @@ export class TaskComponent {
       this.isSortMenuOpen = false;
     } else {
       this.isFilterMenuOpen = false;
+      this.tasksService.closeAllFilterMenus();
       this.isSortMenuOpen = true;
     }
   }
@@ -138,6 +139,7 @@ export class TaskComponent {
       this.isFilterMenuOpen = false;
     } else {
       this.isSortMenuOpen = false;
+      this.tasksService.closeAllFilterMenus();
       this.isFilterMenuOpen = true;
     }
   }
@@ -157,6 +159,16 @@ export class TaskComponent {
   closeSortAndFilterMenu() {
     this.isSortMenuOpen = false;
     this.isFilterMenuOpen = false;
+  }
+
+  closeAllMenus() {
+    this.closeSortAndFilterMenu();
+    this.tasksService.closeAllFilterMenus();
+  }
+
+  @HostListener('document:click')
+  onDocumentClick() {
+    this.closeAllMenus();
   }
   getSortLabel(sortKey: SortKey) {
     switch(sortKey) {
@@ -194,6 +206,30 @@ export class TaskComponent {
       }
 
       return '';
+  }
+
+  /** 進捗セル用ピル */
+  progressPillClass(status: string): string {
+    switch (status) {
+      case '未着手':
+        return 'task-pill task-pill--todo';
+      case '進行中':
+        return 'task-pill task-pill--progress';
+      case '保留':
+        return 'task-pill task-pill--hold';
+      case '完了':
+        return 'task-pill task-pill--done';
+      default:
+        return 'task-pill';
+    }
+  }
+
+  /** 優先度セル用ピル */
+  priorityPillClass(priority: string | null): string {
+    if (priority === '高') return 'task-pill task-pill--pri-high';
+    if (priority === '中') return 'task-pill task-pill--pri-medium';
+    if (priority === '低') return 'task-pill task-pill--pri-low';
+    return 'task-pill task-pill--pri-none';
   }
 
   // カレンダー

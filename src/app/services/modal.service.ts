@@ -51,6 +51,8 @@ export class ModalService {
         // チームメンバーのデータを取得
         data = await this.getTeamMemberDetailData(type, data);
 
+        data = await this.enrichNotificationDetail(type, data);
+
         if(data) {
             // 担当者候補を取得
             data.assignableUsers = await this.getAssignableUsers(type, data);
@@ -135,6 +137,21 @@ export class ModalService {
         console.error("コメント取得失敗: ", error);
         return [];
         }
+    }
+
+    /** 通知詳細で送信者名を表示できるよう fromUid から補完 */
+    async enrichNotificationDetail(type: ModalType, notification: any) {
+        if (type !== 'notification-detail' || !notification?.fromUid) {
+            return notification;
+        }
+        if (notification.fromName) return notification;
+        try {
+            const user = await getUser(notification.fromUid);
+            if (user?.userName) notification.fromName = user.userName;
+        } catch (e) {
+            console.error('通知の送信者名取得失敗: ', e);
+        }
+        return notification;
     }
 
     // チームメンバーの情報を取得

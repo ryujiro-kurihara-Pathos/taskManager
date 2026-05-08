@@ -4,8 +4,6 @@ import {
     getProject,
     getProjectMembers,
     getUser,
-    deleteProjectMember,
-    isAdmin,
     updateTask,
     deleteChildrenTask,
 } from '../../firestore';
@@ -87,10 +85,6 @@ export class ProjectDetailComponent {
         // プロジェクトメンバーを取得
         const projectMembers = await this.getProjectMembers(this.projectId);
         this.project.projectMembers = projectMembers;
-    }
-
-    openProjectInviteModal(project: Project) {
-        this.modalService.open('project-invite', project);
     }
 
     openProjectEditModal(project: Project) {
@@ -203,21 +197,6 @@ export class ProjectDetailComponent {
         } catch (error) {
             console.error('プロジェクトメンバーを取得できませんでした', error);
             return [];
-        }
-    }
-
-    // プロジェクトを抜ける
-    async leaveProject(projectId: string) {
-        try {
-            const user = this.authStateService.user();
-            if(!user) return;
-            const isAdminUser = await isAdmin(user.id, projectId);
-            if(isAdminUser) return;
-            await deleteProjectMember(user.id, projectId);
-            this.router.navigate(['/home/projects']);
-        } catch (error) {
-            console.error('プロジェクトを抜けれませんでした', error);
-            return;
         }
     }
 

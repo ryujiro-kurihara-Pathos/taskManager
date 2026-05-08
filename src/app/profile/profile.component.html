@@ -5,6 +5,7 @@
     <div class="profile-actions">
         <button type="button" class="btn home-btn" routerLink="/home">ホームへ</button>
         <button type="button" class="btn edit-btn" (click)="startEdit()">プロフィールを編集する</button>
+        <button type="button" class="btn logout-btn" (click)="openLogoutConfirm()">ログアウト</button>
     </div>
     <div class="profile-info">
         <div class="profile-circle" aria-hidden="true"></div>
@@ -13,6 +14,19 @@
         <p class="uid">ユーザーID: {{ userUid }}</p>
     </div>
     
+    @if (showLogoutConfirm) {
+        <div class="logout-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="logout-confirm-title" (click)="cancelLogoutConfirm()">
+            <div class="logout-confirm-dialog" (click)="$event.stopPropagation()">
+                <h2 id="logout-confirm-title" class="logout-confirm-title">ログアウトしますか？</h2>
+                <p class="logout-confirm-message">再度ログインするまで、このアカウントのデータは表示されません。</p>
+                <div class="logout-confirm-actions">
+                    <button type="button" class="btn logout-confirm-no" (click)="cancelLogoutConfirm()">いいえ</button>
+                    <button type="button" class="btn logout-confirm-yes" (click)="confirmLogout()">はい</button>
+                </div>
+            </div>
+        </div>
+    }
+
     @if (isEditing) {
         <div class="edit-container">
             <div class="edit-form">
@@ -84,6 +98,74 @@
     }
     .edit-btn:hover {
         background: #255c2b;
+    }
+    .logout-btn {
+        margin-left: auto;
+        border: 1px solid #f0c4c0;
+        background: #fff8f7;
+        color: #b3261e;
+        font-weight: 500;
+    }
+    .logout-btn:hover {
+        background: #ffefee;
+        border-color: #e8a8a2;
+    }
+
+    .logout-confirm-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        box-sizing: border-box;
+        background: rgba(0, 0, 0, 0.45);
+    }
+    .logout-confirm-dialog {
+        width: min(100%, 400px);
+        padding: 22px 20px 20px;
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+        box-sizing: border-box;
+    }
+    .logout-confirm-title {
+        margin: 0 0 10px;
+        font-size: 18px;
+        font-weight: 700;
+        color: #111827;
+    }
+    .logout-confirm-message {
+        margin: 0 0 20px;
+        font-size: 14px;
+        color: #4b5563;
+        line-height: 1.55;
+    }
+    .logout-confirm-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+    .logout-confirm-no {
+        border: 1px solid #c8ccc9;
+        background: #f9fafb;
+        color: #333;
+        font-weight: 500;
+    }
+    .logout-confirm-no:hover {
+        background: #ebf1ee;
+    }
+    .logout-confirm-yes {
+        border: none;
+        background: #b3261e;
+        color: #fff;
+        font-weight: 600;
+    }
+    .logout-confirm-yes:hover {
+        background: #8f1e18;
     }
 
     .profile-info {

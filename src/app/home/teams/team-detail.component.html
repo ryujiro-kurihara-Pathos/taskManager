@@ -1,209 +1,997 @@
-<div class="team-container">
-    <header class="team-header">
-        @if (team()) {
-            <p class="team-header-title">{{ team()?.name }}</p>
-        } @else if (team() === undefined) {
-            <p class="team-header-title">チームを取得中...</p>
-        } @else {
-            <p class="team-header-title">チームが存在しません</p>
-        }
-    </header>
-    <div class="team-body">
-        <div class="team-summary">
-            <div class="summary-card" (click)="openTeamMemberDetailModal(teamMembers())">
-                <p class="summary-label">メンバー</p>
-                <p class="summary-value">{{ teamMembers().length }}</p>
-            </div>
-            <div class="summary-card">
-                <p class="summary-label">アクティブタスク</p>
-                <p class="summary-value">{{ tasksService.tasks().length }}</p>
-            </div>
-            <div class="summary-card">
-                <p class="summary-label">完了タスク</p>
-                <p class="summary-value">{{ getDoneTasks().length }}</p>
-            </div>
-            <div class="summary-card">
-                <p class="summary-label">期日切れタスク</p>
-                <p class="summary-value">{{ getOverdueTasks().length }}</p>
-            </div>
-        </div>
-        <nav class="team-task-tabs" aria-label="タスクの表示">
-            <button class="team-task-tab-btn" type="button"
-            [class.active]="selectedTab === 'all'"
-            (click)="selectedTab = 'all'"
-            >すべて</button>
-            <button class="team-task-tab-btn" type="button"
-            [class.active]="selectedTab === 'active'"
-            (click)="selectedTab = 'active'"
-            >アクティブ</button>
-            <button class="team-task-tab-btn" type="button"
-            [class.active]="selectedTab === 'done'"
-            (click)="selectedTab = 'done'"
-            >完了</button>
-            <button class="team-task-tab-btn" type="button"
-            [class.active]="selectedTab === 'overdue'"
-            (click)="selectedTab = 'overdue'"
-            >期日切れ</button>
-        </nav>
-        <div class="team-task-add-wrapper">
-            <input type="text" [(ngModel)]="addingTeamTask.title" placeholder="タスク名">
-            <button type="button" (click)="addTeamTask()">追加</button>
-        </div>
-        <div class="team-tasks">
-            @for (task of displayTeamTasks(); track task.id) {
-                <button type="button" class="team-task-btn" (click)="openTeamTaskDetailModal(task)">{{ task.title }}</button>
-            }
-        </div>
+<div class="tasks-container">
+  <header class="tasks-header tasks-header--team-detail">
+    <div class="tasks-header-leading">
+      @if (team()) {
+        <p class="tasks-header-title">{{ team()!.name }}</p>
+      } @else if (team() === undefined) {
+        <p class="tasks-header-title">読み込み中...</p>
+      } @else {
+        <p class="tasks-header-title">チームが見つかりません</p>
+      }
     </div>
+    <button
+      type="button"
+      class="team-detail-member-btn"
+      (click)="openTeamMemberDetailModal(teamMembers())"
+    >
+      メンバー（{{ teamMembers().length }}）
+    </button>
+  </header>
+
+  <nav class="display-switch-container" aria-label="表示形式">
+    <button
+      class="display-switch-btn"
+      type="button"
+      [class.active]="tasksService.displayFormat === 'list'"
+      (click)="tasksService.displayFormat = 'list'"
+    >
+      リスト
+    </button>
+    <button
+      class="display-switch-btn"
+      type="button"
+      [class.active]="tasksService.displayFormat === 'board'"
+      (click)="tasksService.displayFormat = 'board'"
+    >
+      ボード
+    </button>
+    <button
+      class="display-switch-btn"
+      type="button"
+      [class.active]="tasksService.displayFormat === 'calendar'"
+      (click)="tasksService.displayFormat = 'calendar'"
+    >
+      カレンダー
+    </button>
+  </nav>
+
+  <div class="tasks-tool-row" (click)="$event.stopPropagation()">
+    <button class="add-task-btn" type="button" (click)="openTaskModal('task-add', null)">
+      + タスクを追加
+    </button>
+    <input
+      class="task-search-input"
+      type="text"
+      placeholder="タスクを検索"
+      autocomplete="off"
+      [value]="tasksService.searchQuery()"
+      (input)="tasksService.searchQuery.set($any($event.target).value)"
+      (compositionend)="tasksService.searchQuery.set($any($event.target).value)"
+    />
+    <div class="menu-wrapper" (click)="$event.stopPropagation()">
+      @if (tasksService.displayFormat === 'list') {
+        <button
+          class="toolbar-btn"
+          type="button"
+          [class.active]="isSortMenuOpen"
+          [class.selected]="isSelectedSort"
+          (click)="toggleSortMenu()"
+        >
+          ソート
+        </button>
+      }
+      @if (tasksService.sortKey !== null) {
+        <button class="clear-btn" type="button" (click)="clearSort()">
+          {{ getSortLabel(tasksService.sortKey) }} ×
+        </button>
+      }
+      @if (isSortMenuOpen) {
+        <div class="dropdown-menu" (click)="$event.stopPropagation()">
+          <button class="menu-item" (click)="selectSort('dueDate')">期日</button>
+          <button class="menu-item" (click)="selectSort('createdAt')">作成日</button>
+          <button class="menu-item" (click)="selectSort('updatedAt')">最終変更日</button>
+        </div>
+      }
+    </div>
+  </div>
+
+  @if (tasksService.displayFormat === 'list') {
+    <!-- リスト -->
+    <div class="list">
+      @if (selectedTaskIds.length > 0) {
+        <div class="task-bulk-bar">
+          <span class="task-bulk-count">{{ selectedTaskIds.length }}件選択中</span>
+          <button class="task-bulk-delete-btn" type="button" (click)="deleteSelectedTask()">
+            削除
+          </button>
+        </div>
+      }
+      <div class="task-table-wrapper">
+        <table class="task-table">
+          <thead class="task-table-head">
+            <tr>
+              <th class="task-table-column-checkbox" scope="col" title="一覧の全選択">
+                <input
+                  type="checkbox"
+                  class="task-table-head-checkbox"
+                  [checked]="isAllDisplayedNotDoneSelected()"
+                  (change)="onToggleSelectAllNotDone($any($event.target).checked)"
+                />
+              </th>
+              <th class="task-table-column-title" scope="col">タスク名</th>
+              <th class="filter-th task-table-column-due-date">
+                <button
+                  class="th-filter-btn"
+                  (click)="$event.stopPropagation(); tasksService.toggleDueDateFilter()"
+                >
+                  期日
+                </button>
+                @if (tasksService.dueDateFilter) {
+                  <button
+                    class="clear-filter-btn"
+                    (click)="$event.stopPropagation(); tasksService.clearDueDateFilter()"
+                  >
+                    <span class="filter-text">{{ tasksService.dueDateFilter }}</span>
+                    <span class="clear-filter-btn-icon">×</span>
+                  </button>
+                }
+                @if (tasksService.isDueDateFilterOpen) {
+                  <div class="th-filter-menu" (click)="$event.stopPropagation()">
+                    <button type="button" (click)="tasksService.selectDueDate(null)">すべて</button>
+                    <button type="button" (click)="tasksService.selectDueDate('今日')">今日</button>
+                    <button type="button" (click)="tasksService.selectDueDate('明日')">明日</button>
+                    <button type="button" (click)="tasksService.selectDueDate('1週間')">1週間</button>
+                    <button type="button" (click)="tasksService.selectDueDate('未設定')">未設定</button>
+                  </div>
+                }
+              </th>
+              <th class="filter-th task-table-column-status">
+                <button
+                  class="th-filter-btn"
+                  (click)="$event.stopPropagation(); tasksService.toggleProgressFilter()"
+                >
+                  進捗
+                </button>
+                @if (tasksService.progressFilter) {
+                  <button
+                    class="clear-filter-btn"
+                    (click)="$event.stopPropagation(); tasksService.clearProgressFilter()"
+                  >
+                    <span class="filter-text">{{ tasksService.progressFilter }}</span>
+                    <span class="clear-filter-btn-icon">×</span>
+                  </button>
+                }
+                @if (tasksService.isProgressFilterOpen) {
+                  <div class="th-filter-menu" (click)="$event.stopPropagation()">
+                    <button type="button" (click)="tasksService.selectProgress(null)">すべて</button>
+                    <button type="button" (click)="tasksService.selectProgress('未着手')">未着手</button>
+                    <button type="button" (click)="tasksService.selectProgress('進行中')">進行中</button>
+                    <button type="button" (click)="tasksService.selectProgress('保留')">保留</button>
+                    <button type="button" (click)="tasksService.selectProgress('完了')">完了</button>
+                  </div>
+                }
+              </th>
+              <th class="filter-th task-table-column-priority">
+                <button
+                  class="th-filter-btn"
+                  (click)="$event.stopPropagation(); tasksService.togglePriorityFilter()"
+                >
+                  優先度
+                </button>
+                @if (tasksService.priorityFilter) {
+                  <button
+                    class="clear-filter-btn"
+                    (click)="$event.stopPropagation(); tasksService.clearPriorityFilter()"
+                  >
+                    <span class="filter-text">{{ tasksService.priorityFilter }}</span>
+                    <span class="clear-filter-btn-icon">×</span>
+                  </button>
+                }
+                @if (tasksService.isPriorityFilterOpen) {
+                  <div class="th-filter-menu" (click)="$event.stopPropagation()">
+                    <button type="button" (click)="tasksService.selectPriority(null)">すべて</button>
+                    <button type="button" (click)="tasksService.selectPriority('高')">高</button>
+                    <button type="button" (click)="tasksService.selectPriority('中')">中</button>
+                    <button type="button" (click)="tasksService.selectPriority('低')">低</button>
+                    <button type="button" (click)="tasksService.selectPriority('未設定')">未設定</button>
+                  </div>
+                }
+              </th>
+              <th class="task-table-column-tags" scope="col">タグ</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (task of displayTasks('notDone'); track task.id) {
+              <tr (click)="openTaskModal('task-edit', task)">
+                <td class="task-table-cell-check" (click)="$event.stopPropagation()">
+                  <input
+                    type="checkbox"
+                    [checked]="selectedTaskIds.includes(task.id)"
+                    (change)="onRowCheckboxChange(task.id, $any($event.target).checked)"
+                  />
+                </td>
+                <td class="task-table-cell-title">{{ task.title }}</td>
+                <td class="task-table-cell-due">
+                  <span class="task-due-range" [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                    >{{ task.startDate }} ~ {{ task.dueDate }}</span
+                  >
+                </td>
+                <td class="task-table-cell-progress">
+                  <span class="task-pill" [ngClass]="progressPillClass(task.status)">{{ task.status }}</span>
+                </td>
+                <td class="task-table-cell-priority">
+                  <span class="task-pill" [ngClass]="priorityPillClass(task.priority)">{{
+                    task.priority ?? '未設定'
+                  }}</span>
+                </td>
+                <td>
+                  @for (tag of task.tags ?? []; track tag.id) {
+                    <span class="task-table-tag" [style.background-color]="tag.color">{{ tag.name }}</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="done-task-container">
+        <h3>完了したタスク</h3>
+        @for (task of displayTasks('done'); track task.id) {
+          <div class="done-task-table-wrapper">
+            <table class="task-table">
+              <tbody>
+                <tr (click)="openTaskModal('task-edit', task)">
+                  <td class="task-table-column-title">{{ task.title }}</td>
+                  <td class="task-table-column-due-date">
+                    <span class="task-due-range" [ngClass]="getDueDateStatus(task.dueDate, task.status)">{{
+                      task.dueDate
+                    }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
+  } @else if (tasksService.displayFormat === 'board') {
+    <!-- ボード -->
+    <div class="board">
+      <div class="board-columns" cdkDropListGroup>
+        <div
+          class="board-column"
+          id="未着手"
+          cdkDropList
+          cdkDropListSortingDisabled
+          [cdkDropListData]="tasksService.filteredTodoTasks()"
+          (cdkDropListDropped)="dropTask($event)"
+        >
+          <p class="board-column-title">未着手</p>
+          @for (task of tasksService.filteredTodoTasks(); track task.id) {
+            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+              <p class="board-card-title">{{ task.title }}</p>
+            </div>
+          }
+        </div>
+        <div
+          class="board-column"
+          id="進行中"
+          cdkDropList
+          cdkDropListSortingDisabled
+          [cdkDropListData]="tasksService.filteredInProgressTasks()"
+          (cdkDropListDropped)="dropTask($event)"
+        >
+          <p class="board-column-title">進行中</p>
+          @for (task of tasksService.filteredInProgressTasks(); track task.id) {
+            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+              <p class="board-card-title">{{ task.title }}</p>
+            </div>
+          }
+        </div>
+        <div
+          class="board-column"
+          id="保留"
+          cdkDropList
+          cdkDropListSortingDisabled
+          [cdkDropListData]="tasksService.filteredOnHoldTasks()"
+          (cdkDropListDropped)="dropTask($event)"
+        >
+          <p class="board-column-title">保留</p>
+          @for (task of tasksService.filteredOnHoldTasks(); track task.id) {
+            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+              <p class="board-card-title">{{ task.title }}</p>
+            </div>
+          }
+        </div>
+        <div
+          class="board-column"
+          id="完了"
+          cdkDropList
+          cdkDropListSortingDisabled
+          [cdkDropListData]="tasksService.filteredDoneTasks()"
+          (cdkDropListDropped)="dropTask($event)"
+        >
+          <p class="board-column-title">完了</p>
+          @for (task of tasksService.filteredDoneTasks(); track task.id) {
+            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+              <p class="board-card-title">{{ task.title }}</p>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  } @else {
+    <!-- カレンダー -->
+    <div class="calendar-nav">
+      <button class="calendar-btn" type="button" (click)="prevWeek()">前の週</button>
+      <button class="calendar-btn" type="button" (click)="today()">今日</button>
+      <button class="calendar-btn" type="button" (click)="nextWeek()">次の週</button>
+    </div>
+    <div class="calendar-board" [style.min-height.px]="getCalendarBoardMinHeight()">
+      <div class="week-grid">
+        @for (date of weekDates; track date.toISOString()) {
+          <div class="day-column">
+            <div class="day-header">
+              <div class="day-name">{{ getDayName(date) }}</div>
+              <div class="day-number" [class.today-number]="isToday(date)">{{ date.getDate() }}</div>
+            </div>
+            <div class="day-body"></div>
+          </div>
+        }
+      </div>
+      <div class="task-layer">
+        @for (task of sortedWeekTasks(); track task.id) {
+          <button
+            type="button"
+            class="sample-task-bar"
+            (click)="openTaskModal('task-edit', task)"
+            [style.top.px]="getTaskTop(task)"
+            [style.left.%]="getTaskLeftPercent(task)"
+            [style.width.%]="getTaskWidthPercent(task)"
+          >
+            {{ task.title }}
+          </button>
+        }
+      </div>
+    </div>
+  }
 </div>
 
 <style>
-    .team-container {
-        width: 100%;
-        /* max-width: 960px; */
-        margin: 0 auto;
-        padding: 0 20px 24px;
-        box-sizing: border-box;
-    }
-    .team-header {
-        padding: 16px 0;
-        border-bottom: 1px solid #e0e0e0;
-    }
-    .team-header-title {
-        margin: 0;
-        font-size: 20px;
-        font-weight: 700;
-        color: #1a1a1a;
-    }
+  .tasks-container {
+    padding: 0 20px 24px;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+  .tasks-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 0;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  .tasks-header-leading {
+    min-width: 0;
+  }
+  .tasks-header-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .team-detail-member-btn {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #c8ccc9;
+    background: #f9fafb;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e3112;
+  }
+  .team-detail-member-btn:hover {
+    background-color: #ebf1ee;
+  }
 
-    .team-body {
-        width: 100%;
-        padding-top: 8px;
-    }
-    .team-summary {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-        gap: 12px;
-        margin-bottom: 16px;
-    }
-    .summary-card {
-        min-width: 0;
-        padding: 14px 16px;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        background: #fff;
-        box-sizing: border-box;
-        cursor: default;
-        transition: background-color 0.15s ease, border-color 0.15s ease;
-    }
-    .summary-card:first-child {
-        cursor: pointer;
-    }
-    .summary-card:first-child:hover {
-        background-color: #f9fafb;
-        border-color: #c8ccc9;
-    }
-    .summary-label {
-        margin: 0 0 8px 0;
-        font-size: 13px;
-        font-weight: 500;
-        color: #555;
-    }
-    .summary-value {
-        margin: 0;
-        font-size: 20px;
-        font-weight: 700;
-        color: #1e3112;
-    }
+  .display-switch-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+    box-sizing: border-box;
+  }
+  .tasks-tool-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .add-task-btn {
+    padding: 8px 16px;
+    background: #4ea356;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .add-task-btn:hover {
+    background: #255c2b;
+  }
+  .task-search-input {
+    flex: 1;
+    min-width: 220px;
+    padding: 10px 14px;
+    border: 1px solid #c8ccc9;
+    border-radius: 8px;
+    background: #f9fafb;
+    font-size: 14px;
+    box-sizing: border-box;
+    outline: none;
+  }
+  .task-search-input:focus {
+    border-color: #4ea356;
+    background: #fff;
+  }
 
-    .team-task-tabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 8px 0 12px;
-        box-sizing: border-box;
-    }
-    .team-task-tab-btn {
-        padding: 8px 14px;
-        border: 1px solid #c8ccc9;
-        background: #f9fafb;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 14px;
-        color: #333;
-        min-width: 0;
-    }
-    .team-task-tab-btn:hover {
-        background-color: #ebf1ee;
-    }
-    .team-task-tab-btn.active {
-        border-color: #1e3112;
-        background: #ebf1ee;
-        font-weight: 600;
-    }
+  .list {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: visible;
+    box-sizing: border-box;
+  }
+  .display-switch-btn {
+    padding: 8px 14px;
+    border: 1px solid #c8ccc9;
+    background: #f9fafb;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+  }
+  .display-switch-btn:hover {
+    background-color: #ebf1ee;
+  }
+  .display-switch-btn.active {
+    border-color: #1e3112;
+    background: #ebf1ee;
+    font-weight: 600;
+  }
 
-    .team-task-add-wrapper {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 12px;
-    }
-    .team-task-add-wrapper input[type="text"] {
-        flex: 1;
-        min-width: 200px;
-        padding: 10px 14px;
-        border: 1px solid #c8ccc9;
-        border-radius: 8px;
-        background: #f9fafb;
-        font-size: 14px;
-        box-sizing: border-box;
-        outline: none;
-    }
-    .team-task-add-wrapper input[type="text"]:focus {
-        border-color: #4ea356;
-        background: #fff;
-    }
-    .team-task-add-wrapper button {
-        padding: 8px 16px;
-        background: #4ea356;
-        color: #fff;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 500;
-    }
-    .team-task-add-wrapper button:hover {
-        background: #255c2b;
-    }
+  /* メニュー */
+  .menu-wrapper {
+    position: relative;
+    display: inline-block;
+  }
+  .toolbar-btn,
+  .clear-btn {
+    height: 30px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  .clear-btn {
+    background-color: #1b5214;
+    color: white;
+  }
+  .clear-btn:hover {
+    color: #1b5214;
+    background-color: rgb(157, 199, 161);
+  }
+  .toolbar-btn:hover {
+    background: #ebf1ee;
+  }
+  .toolbar-btn.active {
+    background: #ebf1ee;
+  }
+  .dropdown-menu {
+    position: absolute;
+    top: 36px;
+    left: 0;
+    width: 180px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    padding: 8px 0;
+    z-index: 10;
+  }
+  .menu-item {
+    width: 100%;
+    height: 40px;
+    border: none;
+    background: white;
+    text-align: left;
+    padding: 0 14px;
+    cursor: pointer;
+  }
+  .menu-item:hover {
+    background: #f5f5f5;
+  }
 
-    .team-tasks {
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-        gap: 8px;
-    }
+  /* リスト */
+  .task-table-wrapper,
+  .done-task-table-wrapper {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: visible;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: none;
+  }
+  .task-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    font-size: 14px;
+    color: #1a1a1a;
+  }
+  .task-table td,
+  .task-table th {
+    font-size: 14px;
+  }
+  .task-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    color: #5c5c5c;
+    padding: 10px 12px;
+    background: #f4f6f8;
+    border-bottom: 1px solid #e0e4e8;
+    border-right: none;
+    box-shadow: 0 1px 0 #e0e4e8;
+  }
+  .filter-th {
+    position: relative;
+    z-index: 3;
+  }
+  .th-filter-btn {
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 14px;
+    color: #666;
+    font: inherit;
+    border-radius: 4px;
+  }
+  .th-filter-btn:hover {
+    background-color: #f0f0f0;
+  }
+  .filter-text {
+    font-size: 12px;
+  }
+  .clear-filter-btn {
+    cursor: pointer;
+    border: none;
+    background-color: #84a38e;
+    color: #fff;
+    border-radius: 4px;
+  }
+  .clear-filter-btn:hover {
+    background-color: #2a5327;
+  }
+  .clear-filter-btn-icon {
+    font-size: 16px;
+  }
+  .th-filter-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 6px;
+    min-width: 100px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  }
+  .th-filter-menu button {
+    display: block;
+    width: 100%;
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .th-filter-menu button:hover {
+    background-color: #f0f0f0;
+  }
+  .task-table-column-title {
+    width: auto;
+    min-width: 0;
+    max-width: 40%;
+    overflow: hidden;
+  }
+  .task-table-column-due-date {
+    min-width: 180px;
+    width: 22%;
+  }
+  .task-table-column-status {
+    width: 100px;
+  }
+  .task-table-column-priority {
+    width: 100px;
+  }
+  .task-table-column-tags {
+    width: 200px;
+  }
+  .task-table-column-checkbox {
+    width: 44px;
+    text-align: center;
+    vertical-align: middle;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .task-table-head-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  .task-table-cell-check {
+    width: 44px;
+    text-align: center;
+    vertical-align: middle;
+    padding: 10px 8px;
+  }
+  .task-table-cell-check input {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+  .task-table-cell-title {
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .task-bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    background: #f4f6f8;
+    border: 1px solid #e0e4e8;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+  .task-bulk-count {
+    font-size: 13px;
+    color: #444;
+  }
+  .task-bulk-delete-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    border: none;
+    border-radius: 6px;
+    background: #8b2942;
+    color: #fff;
+    cursor: pointer;
+  }
+  .task-bulk-delete-btn:hover {
+    background: #6d1f33;
+  }
+  .task-table tbody tr {
+    cursor: pointer;
+  }
+  .task-table tbody tr:hover {
+    background-color: #f7faf7;
+  }
+  .task-table tbody td {
+    padding: 12px 12px;
+    border-bottom: 1px solid #eef0f3;
+    border-right: none;
+    vertical-align: middle;
+  }
+  .done-task-container {
+    display: flex;
+    flex-direction: column;
+  }
+  .task-table-cell-due,
+  .task-table-cell-progress,
+  .task-table-cell-priority {
+    white-space: nowrap;
+  }
+  .task-due-range {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.35;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    box-sizing: border-box;
+  }
+  .task-due-range.overdue {
+    background-color: #ffcdd2;
+    color: #b71c1c;
+    font-weight: 600;
+  }
+  .task-due-range.near {
+    background-color: #fff9c4;
+    color: #827717;
+    font-weight: 600;
+  }
+  .task-pill {
+    display: inline-block;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+    border: 1px solid transparent;
+  }
+  .task-pill--todo {
+    background: #e3f2fd;
+    color: #0d47a1;
+    border-color: #bbdefb;
+  }
+  .task-pill--progress {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border-color: #c8e6c9;
+  }
+  .task-pill--hold {
+    background: #fff3e0;
+    color: #e65100;
+    border-color: #ffe0b2;
+  }
+  .task-pill--done {
+    background: #f3e5f5;
+    color: #6a1b9a;
+    border-color: #e1bee7;
+  }
+  .task-pill--pri-high {
+    background: #ffebee;
+    color: #c62828;
+    border-color: #ffcdd2;
+  }
+  .task-pill--pri-medium {
+    background: #fff8e1;
+    color: #f57f17;
+    border-color: #ffe082;
+  }
+  .task-pill--pri-low {
+    background: #eceff1;
+    color: #455a64;
+    border-color: #cfd8dc;
+  }
+  .task-pill--pri-none {
+    background: #f5f5f5;
+    color: #757575;
+    border-color: #e0e0e0;
+    font-weight: 500;
+  }
+  .task-table-tag {
+    font-size: 12px;
+    padding: 2px 6px;
+  }
 
-    .team-task-btn {
-        width: 100%;
-        text-align: left;
-        padding: 12px 14px;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        background: #fff;
-        font-size: 15px;
-        font-weight: 600;
-        color: #1a1a1a;
-        cursor: pointer;
-        box-sizing: border-box;
-        transition: background-color 0.15s ease, border-color 0.15s ease;
-    }
-    .team-task-btn:hover {
-        background: #f9fafb;
-        border-color: #c8ccc9;
-    }
+  /* ボード */
+  .board {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 4px 16px;
+    background: #f0f3f1;
+    border-radius: 10px;
+    border: 1px solid #e8e8e8;
+  }
+  .board-columns {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+    width: max-content;
+    min-height: min(360px, 55vh);
+    padding: 4px 12px 8px;
+    box-sizing: border-box;
+  }
+  .board-column {
+    width: 272px;
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 10px 14px;
+    background: #e4e9e5;
+    border-radius: 12px;
+    border: 1px solid #d5dcd6;
+    box-sizing: border-box;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  .board-column-title {
+    margin: 0 0 4px;
+    padding: 6px 4px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #3d523f;
+    border-bottom: 1px solid #c9d1ca;
+    box-sizing: border-box;
+    background: transparent;
+    border-radius: 0;
+  }
+  .board-card {
+    cursor: pointer;
+    padding: 12px 12px;
+    background: #fff;
+    border: 1px solid #e0e4e8;
+    border-radius: 10px;
+    box-sizing: border-box;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  .board-card:hover {
+    border-color: #b8c9b9;
+    box-shadow: 0 4px 14px rgba(27, 82, 20, 0.12);
+    transform: translateY(-1px);
+  }
+  .board-card:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  .board-card.cdk-drag-preview {
+    opacity: 0.85;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  }
+  .board-card.cdk-drag-placeholder {
+    opacity: 0.25;
+  }
+  .board-card-title {
+    font-size: 14px;
+    line-height: 1.45;
+    margin: 0;
+    color: #1a1a1a;
+    line-clamp: 4;
+    overflow: hidden;
+  }
+
+  /* カレンダー */
+  .calendar-nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .calendar-btn {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    background: #fff;
+    color: #333;
+  }
+  .calendar-btn:hover {
+    background: #f5f5f5;
+    border-color: #ccc;
+  }
+  .calendar-nav .calendar-btn:nth-child(2) {
+    background: #4ea356;
+    color: #fff;
+    border-color: #4ea356;
+  }
+  .calendar-nav .calendar-btn:nth-child(2):hover {
+    background: #255c2b;
+    border-color: #255c2b;
+  }
+  .calendar-board {
+    position: relative;
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+  .week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    width: 100%;
+    background: #fff;
+    align-items: stretch;
+  }
+  .day-column {
+    min-width: 0;
+    min-height: 0;
+    border-right: 1px solid #eee;
+    display: flex;
+    flex-direction: column;
+  }
+  .day-column:last-child {
+    border-right: none;
+  }
+  .day-header {
+    min-height: 64px;
+    padding: 8px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-bottom: 1px solid #eee;
+    background: #fafafa;
+    box-sizing: border-box;
+  }
+  .day-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: #888;
+  }
+  .day-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: #222;
+  }
+  .today-number {
+    color: #fff;
+    background: #1b5214;
+  }
+  .day-body {
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    position: relative;
+    background: #fff;
+  }
+  .task-layer {
+    position: absolute;
+    top: 65px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    cursor: default;
+    min-height: 0;
+    padding: 6px 4px 10px;
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+  .sample-task-bar {
+    pointer-events: auto;
+    cursor: pointer;
+    position: absolute;
+    height: 36px;
+    background: #f0e6a8;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    box-sizing: border-box;
+    border-radius: 4px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-weight: 500;
+    color: #333;
+    border: 1px solid #ddd4a0;
+  }
+  .sample-task-bar:hover {
+    filter: brightness(0.97);
+  }
 </style>

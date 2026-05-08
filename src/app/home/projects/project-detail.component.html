@@ -4,15 +4,13 @@
             <p class="tasks-header-title">{{ project.name }}</p>
             <div class="project-header-actions">
               <button type="button" class="toolbar-btn" (click)="openProjectEditModal(project)">編集</button>
-              <button type="button" class="toolbar-btn" (click)="openProjectInviteModal(project)">招待</button>
               <div class="member-list" (click)="openMemberListModal(project)" title="メンバー一覧">
-                @for (member of project.projectMembers; track member.id) {
+                @for (member of (project.projectMembers ?? []); track member.id) {
                   <div class="member-circle">
                     <p class="member-circle-text">{{ member.user?.userName?.charAt(0) }}</p>
                   </div>
                 }
               </div>
-              <button type="button" class="danger-btn" (click)="leaveProject(project.id)">退出</button>
             </div>
         </header>
         <nav class="display-switch-container" aria-label="表示形式">
@@ -80,216 +78,216 @@
         </div>
 
         @if (displayFormat === 'list') {
-    <!-- リスト -->
-    <div class="list">
-      @if (selectedTaskIds.length > 0) {
-        <div class="task-bulk-bar">
-          <span class="task-bulk-count">{{ selectedTaskIds.length }}件選択中</span>
-          <button class="task-bulk-delete-btn" type="button" (click)="deleteSelectedTask()">削除</button>
-        </div>
-      }
-      <div class="task-table-wrapper">
-        <table class="task-table">
-          <thead class="task-table-head">
-            <tr>
-              <th class="task-table-column-checkbox" scope="col" title="一覧の全選択">
-                <input
-                  type="checkbox"
-                  class="task-table-head-checkbox"
-                  [checked]="isAllDisplayedNotDoneSelected()"
-                  (change)="onToggleSelectAllNotDone($any($event.target).checked)"
-                />
-              </th>
-              <th class="task-table-column-title" scope="col">タスク名</th>
-              <th class="filter-th task-table-column-due-date">
-                <button type="button" class="th-filter-btn" (click)="toggleDueDateFilter()">
-                  期日
-                </button>
-                @if (dueDateFilter) {
-                  <button type="button" class="clear-filter-btn" (click)="clearDueDateFilter()">
-                    <span class="filter-text">{{ dueDateFilter }}</span>
-                    <span class="clear-filter-btn-icon">×</span>
-                  </button>
-                }
-                @if (isDueDateFilterOpen) {
-                  <div class="th-filter-menu">
-                    <button type="button" (click)="selectDueDate(null)">すべて</button>
-                    <button type="button" (click)="selectDueDate('今日')">今日</button>
-                    <button type="button" (click)="selectDueDate('明日')">明日</button>
-                    <button type="button" (click)="selectDueDate('1週間')">1週間</button>
-                    <button type="button" (click)="selectDueDate('未設定')">未設定</button>
-                  </div>
-                }
-              </th>
-              <th class="filter-th task-table-column-status">
-                <button type="button" class="th-filter-btn" (click)="toggleProgressFilter()">
-                  進捗
-                </button>
-                @if (progressFilter) {
-                  <button type="button" class="clear-filter-btn" (click)="clearProgressFilter()">
-                    <span class="filter-text">{{ progressFilter }}</span>
-                    <span class="clear-filter-btn-icon">×</span>
-                  </button>
-                }
-                @if (isProgressFilterOpen) {
-                  <div class="th-filter-menu">
-                    <button type="button" (click)="selectProgress(null)">すべて</button>
-                    <button type="button" (click)="selectProgress('未着手')">未着手</button>
-                    <button type="button" (click)="selectProgress('進行中')">進行中</button>
-                    <button type="button" (click)="selectProgress('保留')">保留</button>
-                    <button type="button" (click)="selectProgress('完了')">完了</button>
-                  </div>
-                }
-              </th>
-              <th class="filter-th task-table-column-priority">
-                <button type="button" class="th-filter-btn" (click)="togglePriorityFilter()">
-                  優先度
-                </button>
-                @if (priorityFilter) {
-                  <button type="button" class="clear-filter-btn" (click)="clearPriorityFilter()">
-                    <span class="filter-text">{{ priorityFilter }}</span>
-                    <span class="clear-filter-btn-icon">×</span>
-                  </button>
-                }
-                @if (isPriorityFilterOpen) {
-                  <div class="th-filter-menu">
-                    <button type="button" (click)="selectPriority(null)">すべて</button>
-                    <button type="button" (click)="selectPriority('高')">高</button>
-                    <button type="button" (click)="selectPriority('中')">中</button>
-                    <button type="button" (click)="selectPriority('低')">低</button>
-                    <button type="button" (click)="selectPriority('未設定')">未設定</button>
-                  </div>
-                }
-              </th>
-              <th class="filter-th task-table-column-tags">
-                <button type="button" class="th-filter-btn">タグ</button>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (task of displayTasks('notDone'); track task.id) {
-              <tr
-                (click)="openTaskModal('task-edit', task)"
-                [ngClass]="getDueDateStatus(task.dueDate, task.status)"
-              >
-                <td class="task-table-cell-check" (click)="$event.stopPropagation()">
-                  <input
-                    type="checkbox"
-                    [checked]="selectedTaskIds.includes(task.id)"
-                    (change)="onRowCheckboxChange(task.id, $any($event.target).checked)"
-                  />
-                </td>
-                <td class="task-table-cell-title">{{ task.title }}</td>
-                <td>{{ task.startDate }} ~ {{ task.dueDate }}</td>
-                <td>{{ task.status }}</td>
-                <td>{{ task.priority }}</td>
-                <td>
-                  @for (tagId of task.tagIds; track tagId) {
-                    <span class="task-table-tag">{{ tagId }}</span>
-                  }
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-      <div class="done-task-container">
-        <h3>完了したタスク</h3>
-        @for (task of displayTasks('done'); track task.id) {
-          <div class="done-task-table-wrapper">
+        <!-- リスト -->
+        <div class="list">
+          @if (selectedTaskIds.length > 0) {
+            <div class="task-bulk-bar">
+              <span class="task-bulk-count">{{ selectedTaskIds.length }}件選択中</span>
+              <button class="task-bulk-delete-btn" type="button" (click)="deleteSelectedTask()">削除</button>
+            </div>
+          }
+          <div class="task-table-wrapper">
             <table class="task-table">
-              <tbody>
-                <tr
-                  (click)="openTaskModal('task-edit', task)"
-                  [ngClass]="getDueDateStatus(task.dueDate, task.status)"
-                >
-                  <td class="task-table-column-title">{{ task.title }}</td>
-                  <td class="task-table-column-due-date">{{ task.dueDate }}</td>
+              <thead class="task-table-head">
+                <tr>
+                  <th class="task-table-column-checkbox" scope="col" title="一覧の全選択">
+                    <input
+                      type="checkbox"
+                      class="task-table-head-checkbox"
+                      [checked]="isAllDisplayedNotDoneSelected()"
+                      (change)="onToggleSelectAllNotDone($any($event.target).checked)"
+                    />
+                  </th>
+                  <th class="task-table-column-title" scope="col">タスク名</th>
+                  <th class="filter-th task-table-column-due-date">
+                    <button type="button" class="th-filter-btn" (click)="toggleDueDateFilter()">
+                      期日
+                    </button>
+                    @if (dueDateFilter) {
+                      <button type="button" class="clear-filter-btn" (click)="clearDueDateFilter()">
+                        <span class="filter-text">{{ dueDateFilter }}</span>
+                        <span class="clear-filter-btn-icon">×</span>
+                      </button>
+                    }
+                    @if (isDueDateFilterOpen) {
+                      <div class="th-filter-menu">
+                        <button type="button" (click)="selectDueDate(null)">すべて</button>
+                        <button type="button" (click)="selectDueDate('今日')">今日</button>
+                        <button type="button" (click)="selectDueDate('明日')">明日</button>
+                        <button type="button" (click)="selectDueDate('1週間')">1週間</button>
+                        <button type="button" (click)="selectDueDate('未設定')">未設定</button>
+                      </div>
+                    }
+                  </th>
+                  <th class="filter-th task-table-column-status">
+                    <button type="button" class="th-filter-btn" (click)="toggleProgressFilter()">
+                      進捗
+                    </button>
+                    @if (progressFilter) {
+                      <button type="button" class="clear-filter-btn" (click)="clearProgressFilter()">
+                        <span class="filter-text">{{ progressFilter }}</span>
+                        <span class="clear-filter-btn-icon">×</span>
+                      </button>
+                    }
+                    @if (isProgressFilterOpen) {
+                      <div class="th-filter-menu">
+                        <button type="button" (click)="selectProgress(null)">すべて</button>
+                        <button type="button" (click)="selectProgress('未着手')">未着手</button>
+                        <button type="button" (click)="selectProgress('進行中')">進行中</button>
+                        <button type="button" (click)="selectProgress('保留')">保留</button>
+                        <button type="button" (click)="selectProgress('完了')">完了</button>
+                      </div>
+                    }
+                  </th>
+                  <th class="filter-th task-table-column-priority">
+                    <button type="button" class="th-filter-btn" (click)="togglePriorityFilter()">
+                      優先度
+                    </button>
+                    @if (priorityFilter) {
+                      <button type="button" class="clear-filter-btn" (click)="clearPriorityFilter()">
+                        <span class="filter-text">{{ priorityFilter }}</span>
+                        <span class="clear-filter-btn-icon">×</span>
+                      </button>
+                    }
+                    @if (isPriorityFilterOpen) {
+                      <div class="th-filter-menu">
+                        <button type="button" (click)="selectPriority(null)">すべて</button>
+                        <button type="button" (click)="selectPriority('高')">高</button>
+                        <button type="button" (click)="selectPriority('中')">中</button>
+                        <button type="button" (click)="selectPriority('低')">低</button>
+                        <button type="button" (click)="selectPriority('未設定')">未設定</button>
+                      </div>
+                    }
+                  </th>
+                  <th class="filter-th task-table-column-tags">
+                    <button type="button" class="th-filter-btn">タグ</button>
+                  </th>
                 </tr>
+              </thead>
+              <tbody>
+                @for (task of displayTasks('notDone'); track task.id) {
+                  <tr
+                    (click)="openTaskModal('task-edit', task)"
+                    [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                  >
+                    <td class="task-table-cell-check" (click)="$event.stopPropagation()">
+                      <input
+                        type="checkbox"
+                        [checked]="selectedTaskIds.includes(task.id)"
+                        (change)="onRowCheckboxChange(task.id, $any($event.target).checked)"
+                      />
+                    </td>
+                    <td class="task-table-cell-title">{{ task.title }}</td>
+                    <td>{{ task.startDate }} ~ {{ task.dueDate }}</td>
+                    <td>{{ task.status }}</td>
+                    <td>{{ task.priority }}</td>
+                    <td>
+                      @for (tagId of task.tagIds; track tagId) {
+                        <span class="task-table-tag">{{ tagId }}</span>
+                      }
+                    </td>
+                  </tr>
+                }
               </tbody>
             </table>
           </div>
-        }
-      </div>
-    </div>
+          <div class="done-task-container">
+            <h3>完了したタスク</h3>
+            @for (task of displayTasks('done'); track task.id) {
+              <div class="done-task-table-wrapper">
+                <table class="task-table">
+                  <tbody>
+                    <tr
+                      (click)="openTaskModal('task-edit', task)"
+                      [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                    >
+                      <td class="task-table-column-title">{{ task.title }}</td>
+                      <td class="task-table-column-due-date">{{ task.dueDate }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+        </div>
         } @else if (displayFormat === 'board') {
-    <!-- ボード -->
-    <div class="board">
-      <div class="board-columns" cdkDropListGroup>
-        <div
-          class="board-column"
-          id="未着手"
-          cdkDropList
-          cdkDropListSortingDisabled
-          [cdkDropListData]="boardTodos()"
-          (cdkDropListDropped)="dropTask($event)"
-        >
-          <p class="board-column-title">未着手</p>
-          @for (task of boardTodos(); track task.id) {
-            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
-              <p class="board-card-title">{{ task.title }}</p>
-              <p class="board-card-due-date">{{ task.dueDate }}</p>
-              <p class="board-card-tags">
-                @for (tagId of task.tagIds; track tagId) {
-                  <span class="board-card-tag">{{ tagId }}</span>
-                }
-              </p>
+        <!-- ボード -->
+        <div class="board">
+          <div class="board-columns" cdkDropListGroup>
+            <div
+              class="board-column"
+              id="未着手"
+              cdkDropList
+              cdkDropListSortingDisabled
+              [cdkDropListData]="boardTodos()"
+              (cdkDropListDropped)="dropTask($event)"
+            >
+              <p class="board-column-title">未着手</p>
+              @for (task of boardTodos(); track task.id) {
+                <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+                  <p class="board-card-title">{{ task.title }}</p>
+                  <p class="board-card-due-date">{{ task.dueDate }}</p>
+                  <p class="board-card-tags">
+                    @for (tagId of task.tagIds; track tagId) {
+                      <span class="board-card-tag">{{ tagId }}</span>
+                    }
+                  </p>
+                </div>
+              }
             </div>
-          }
-        </div>
-        <div
-          class="board-column"
-          id="進行中"
-          cdkDropList
-          cdkDropListSortingDisabled
-          [cdkDropListData]="boardInProgress()"
-          (cdkDropListDropped)="dropTask($event)"
-        >
-          <p class="board-column-title">進行中</p>
-          @for (task of boardInProgress(); track task.id) {
-            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
-              <p class="board-card-title">{{ task.title }}</p>
-              <p class="board-card-due-date">{{ task.dueDate }}</p>
-              <p class="board-card-tags">タグ</p>
+            <div
+              class="board-column"
+              id="進行中"
+              cdkDropList
+              cdkDropListSortingDisabled
+              [cdkDropListData]="boardInProgress()"
+              (cdkDropListDropped)="dropTask($event)"
+            >
+              <p class="board-column-title">進行中</p>
+              @for (task of boardInProgress(); track task.id) {
+                <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+                  <p class="board-card-title">{{ task.title }}</p>
+                  <p class="board-card-due-date">{{ task.dueDate }}</p>
+                  <p class="board-card-tags">タグ</p>
+                </div>
+              }
             </div>
-          }
-        </div>
-        <div
-          class="board-column"
-          id="保留"
-          cdkDropList
-          cdkDropListSortingDisabled
-          [cdkDropListData]="boardOnHold()"
-          (cdkDropListDropped)="dropTask($event)"
-        >
-          <p class="board-column-title">保留</p>
-          @for (task of boardOnHold(); track task.id) {
-            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
-              <p class="board-card-title">{{ task.title }}</p>
-              <p class="board-card-due-date">{{ task.dueDate }}</p>
-              <p class="board-card-tags">タグ</p>
+            <div
+              class="board-column"
+              id="保留"
+              cdkDropList
+              cdkDropListSortingDisabled
+              [cdkDropListData]="boardOnHold()"
+              (cdkDropListDropped)="dropTask($event)"
+            >
+              <p class="board-column-title">保留</p>
+              @for (task of boardOnHold(); track task.id) {
+                <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+                  <p class="board-card-title">{{ task.title }}</p>
+                  <p class="board-card-due-date">{{ task.dueDate }}</p>
+                  <p class="board-card-tags">タグ</p>
+                </div>
+              }
             </div>
-          }
-        </div>
-        <div
-          class="board-column"
-          id="完了"
-          cdkDropList
-          cdkDropListSortingDisabled
-          [cdkDropListData]="boardDone()"
-          (cdkDropListDropped)="dropTask($event)"
-        >
-          <p class="board-column-title">完了</p>
-          @for (task of boardDone(); track task.id) {
-            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
-              <p class="board-card-title">{{ task.title }}</p>
-              <p class="board-card-due-date">{{ task.dueDate }}</p>
-              <p class="board-card-tags">タグ</p>
+            <div
+              class="board-column"
+              id="完了"
+              cdkDropList
+              cdkDropListSortingDisabled
+              [cdkDropListData]="boardDone()"
+              (cdkDropListDropped)="dropTask($event)"
+            >
+              <p class="board-column-title">完了</p>
+              @for (task of boardDone(); track task.id) {
+                <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+                  <p class="board-card-title">{{ task.title }}</p>
+                  <p class="board-card-due-date">{{ task.dueDate }}</p>
+                  <p class="board-card-tags">タグ</p>
+                </div>
+              }
             </div>
-          }
+          </div>
         </div>
-      </div>
-    </div>
         } @else if (displayFormat === 'calendar') {
         <!-- カレンダー -->
         <div class="calendar-nav">

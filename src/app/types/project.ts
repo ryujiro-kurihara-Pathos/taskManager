@@ -12,10 +12,11 @@ export type Project = {
     updatedAt: string;
     
     teamId: string | null;
+    teamName: string | null;
     projectMembers: ProjectMember[] | null;
     taskCount: number | null;
 }
-export type AddProjectInput = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'projectMembers' | 'taskCount'>;
+export type AddProjectInput = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'projectMembers' | 'taskCount' | 'teamName'>;
 
 // プロジェクトメンバー
 export type ProjectMember = {

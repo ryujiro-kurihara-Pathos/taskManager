@@ -1,23 +1,30 @@
 <div class="full-page">
-  <div class="topbar">
-    <button class="menu-button" type="button" (click)="toggleSidebar()">
-      <span></span><span></span><span></span>
+  <header class="topbar" role="banner">
+    <button
+      class="menu-button"
+      type="button"
+      (click)="toggleSidebar()"
+      [attr.aria-expanded]="isSidebarOpen"
+      aria-controls="app-sidebar"
+      aria-label="サイドバーを開閉"
+    >
+      <span class="menu-button-lines" aria-hidden="true"><span></span><span></span><span></span></span>
     </button>
-    @if (authState.isLoggedIn) {
-      <button class="login-btn" type="button">
-        <p class="login-text" (click)="onLogout()">ログアウト</p>
-      </button>
-    } @else {
-      <button class="login-btn" type="button" routerLink="/login">ログイン</button>
-      <button class="login-btn" type="button" routerLink="/signup">新規登録</button>
+    <div class="topbar-spacer" aria-hidden="true"></div>
+    @if (!authState.isLoggedIn) {
+      <nav class="topbar-actions" aria-label="アカウント">
+        <a class="login-btn login-btn--topbar login-btn--link" routerLink="/login">ログイン</a>
+        <a class="login-btn login-btn--topbar login-btn--primary-outline" routerLink="/signup">新規登録</a>
+      </nav>
     }
-  </div>
+  </header>
   <div class="main-content">
     <!-- 左サイドバー -->
-    <div class="left-side" [class.closed]="!isSidebarOpen">
+    <aside class="left-side" id="app-sidebar" [class.closed]="!isSidebarOpen" [attr.aria-hidden]="!isSidebarOpen">
       <div class="sidebar">
-        <p class="sidebar-title">課題管理アプリ</p>
-        <div class="sidebar-menu">
+        <p class="sidebar-title">Task Manager</p>
+        <p class="sidebar-subtitle">ナビゲーション</p>
+        <nav class="sidebar-menu" aria-label="メインメニュー">
           <a class="sidebar-menu-btn"
           (click)="tasksService.clearTasks()"
            routerLink="/home/tasks" routerLinkActive="active">マイタスク</a>
@@ -33,13 +40,13 @@
           <a class="sidebar-menu-btn" 
           (click)="tasksService.clearTasks()"
           routerLink="/home/goals" routerLinkActive="active">ゴール</a>
-        </div>
+        </nav>
       </div>
-      <div class="profile" routerLink="/profile">
-        <div class="profile-circle"></div>
-        <p class="profile-name">{{ authState.userName }}</p>
-      </div>
-    </div>
+      <a class="profile" routerLink="/profile" tabindex="0">
+        <div class="profile-circle" aria-hidden="true"></div>
+        <span class="profile-name">{{ authState.userName }}</span>
+      </a>
+    </aside>
     <!-- メイン -->
     <main class="main">
       <div class="main-container">
@@ -115,7 +122,19 @@
                 </div>
                 <div class="task-add-tag-new">
                   <input type="text" [(ngModel)]="newTagName" placeholder="新しいタグ名" class="task-add-tag-name-input" />
-                  <input type="color" [(ngModel)]="newTagColor" title="色" />
+                  <div class="tag-color-palette" aria-label="タグ色を選択">
+                    @for (c of tagColorPresets; track c) {
+                      <button
+                        type="button"
+                        class="tag-color-swatch"
+                        [class.active]="newTagColor === c"
+                        [style.background-color]="c"
+                        (click)="selectNewTagColor(c)"
+                        [attr.aria-label]="'色 ' + c"
+                        [attr.title]="c"
+                      ></button>
+                    }
+                  </div>
                   <button type="button" class="task-add-tag-create-btn" (click)="createTag()">作成</button>
                 </div>
               </div>
@@ -145,13 +164,14 @@
             >
             <div class="edit-task-item">
               <p class="edit-label">担当者</p>
-              <select name="assignedUid" id="assignedUid-select"
+              <p class="edit-task-assigned-user-name">{{ authState.userName }}</p>
+              <!-- <select name="assignedUid" id="assignedUid-select"
               [(ngModel)]="tasksService.editingTask.assignedUid">
                 <option [ngValue]="null">未指定</option>
                 @for (user of tasksService.editingTask.assignableUsers; track user.id) {
                   <option [ngValue]="user.id">{{ user.userName }}</option>
                 }
-              </select>
+              </select> -->
             </div>
             <div class="edit-task-item">
               <p class="edit-label">開始日</p>
@@ -206,7 +226,7 @@
                     <label class="task-tag-option">
                       <input
                         type="checkbox"
-                        [checked]="tasksService.editingTask.tagIds.includes(tag.id)"
+                        [checked]="(tasksService.editingTask.tagIds ?? []).includes(tag.id)"
                         (change)="toggleEditingTaskTag(tag.id, $any($event.target).checked)"
                       />
                       <span>{{ tag.name }}</span>
@@ -215,7 +235,19 @@
                 </div>
                 <div class="task-add-tag-new">
                   <input type="text" [(ngModel)]="newTagName" placeholder="新しいタグ名" class="task-add-tag-name-input" />
-                  <input type="color" [(ngModel)]="newTagColor" title="色" />
+                  <div class="tag-color-palette" aria-label="タグ色を選択">
+                    @for (c of tagColorPresets; track c) {
+                      <button
+                        type="button"
+                        class="tag-color-swatch"
+                        [class.active]="newTagColor === c"
+                        [style.background-color]="c"
+                        (click)="selectNewTagColor(c)"
+                        [attr.aria-label]="'色 ' + c"
+                        [attr.title]="c"
+                      ></button>
+                    }
+                  </div>
                   <button type="button" class="task-add-tag-create-btn" (click)="createTag()">作成</button>
                 </div>
               </div>
@@ -254,7 +286,7 @@
               <div class="edit-task-comments-container">
                 @for (comment of modalState.data.comments; track comment.id) {
                   <p class="edit-task-comment-content">{{ comment.content }}</p>
-                  <p class="edit-task-comment-time">{{ tasksService.displayCommentTime(comment.createdAt) }}</p>
+                  <p class="edit-task-comment-time">{{ tasksService.displayTime(comment.createdAt, 'time') }}</p>
                   <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)">
                     削除
                   </button>
@@ -269,20 +301,53 @@
       </div>
     } @else if (modalState.type === 'project-edit') {
       <div class="modal" (click)="closeModal()">
-        <div class="modal-form" (click)="$event.stopPropagation()">
+        <div class="modal-form project-edit-modal-form" (click)="$event.stopPropagation()">
           <div class="modal-top">
-            <p>プロジェクトを編集</p>
+            <p class="modal-title">プロジェクトを編集</p>
             <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
           </div>
-          <div class="modal-body">
-            <input type="text" [(ngModel)]="modalState.data.name" placeholder="プロジェクト名を入力してください" />
-            <select name="visibility" id="visibility-select" [(ngModel)]="modalState.data.visibility">
-              <option value="private">非公開</option>
-              <option value="members">公開</option>
-            </select>
-            <input type="text" [(ngModel)]="modalState.data.description" placeholder="プロジェクトの説明を入力してください" />
+          <div class="modal-body project-edit-body">
+            <section class="project-edit-section">
+              <h3 class="project-edit-section-title">基本情報</h3>
+              <div class="project-edit-fields">
+                <label class="project-edit-label" for="proj-edit-name">名前</label>
+                <input
+                  id="proj-edit-name"
+                  type="text"
+                  [(ngModel)]="modalState.data.name"
+                  placeholder="プロジェクト名を入力してください"
+                  class="project-edit-input"
+                />
+                <label class="project-edit-label" for="proj-edit-vis">公開設定</label>
+                <select id="proj-edit-vis" name="visibility" [(ngModel)]="modalState.data.visibility" class="project-edit-input">
+                  <option value="private">非公開</option>
+                  <option value="members">公開</option>
+                </select>
+                <label class="project-edit-label" for="proj-edit-desc">説明</label>
+                <textarea
+                  id="proj-edit-desc"
+                  [(ngModel)]="modalState.data.description"
+                  placeholder="プロジェクトの説明を入力してください"
+                  class="project-edit-input project-edit-textarea"
+                  rows="3"
+                ></textarea>
+              </div>
+            </section>
+            <section class="project-edit-section">
+              <h3 class="project-edit-section-title">メンバー招待</h3>
+              <p class="project-edit-section-hint">招待したユーザーに通知が送信されます。</p>
+              <div class="modal-content-email-input-container project-edit-invite-row">
+                <input type="email" [(ngModel)]="inviteEmail" placeholder="メールアドレスを入力してください" />
+                <button class="project-invite-btn" type="button" (click)="invite('project', modalState.data.id, false)">招待</button>
+              </div>
+            </section>
+          </div>
+          <div class="modal-footer project-edit-footer">
             <button class="project-edit-save-btn" type="button" (click)="saveProjectEdit(modalState.data)">保存</button>
-            <button class="project-edit-delete-btn" type="button" (click)="deleteProject(modalState.data)">削除</button>
+            <div class="project-edit-danger-actions">
+              <button class="project-edit-leave-btn" type="button" (click)="leaveProjectFromEdit(modalState.data)">プロジェクトから退出</button>
+              <button class="project-edit-delete-btn" type="button" (click)="deleteProject(modalState.data)">プロジェクトを削除</button>
+            </div>
           </div>
         </div>
       </div>
@@ -329,51 +394,91 @@
       </div>
     } @else if (modalState.type === 'notification-detail') {
       <div class="modal" (click)="closeModal()">
-        <div class="modal-form" (click)="$event.stopPropagation()">
-          <div class="modal-top">
-            <p>受信トレイ詳細</p>
-            <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
+        <div class="modal-form notification-detail-modal" (click)="$event.stopPropagation()">
+          <div class="modal-top notification-detail-header">
+            <div class="notification-detail-header-text">
+              <p class="notification-detail-eyebrow">受信トレイ</p>
+              <p class="notification-detail-heading">通知の詳細</p>
+            </div>
+            <button class="close-modal-btn notification-detail-close" type="button" (click)="closeModal()" aria-label="閉じる">×</button>
           </div>
-          <div class="modal-body">
-            <div class="modal-notification-title-wrapper">
-              <div class="modal-notification-title-icon"></div>
-              <div class="modal-notification-text-wrapper">
-                <p class="modal-notification-title">{{ modalState.data.title }}</p>
-                <p class="modal-notification-time">2時間前</p>
+          <div class="modal-body notification-detail-body">
+            <div class="notification-detail-hero">
+              <div
+                [class]="'notification-detail-icon notification-detail-icon--' + notificationIconModifier(modalState.data.type)"
+                aria-hidden="true"
+              ></div>
+              <div class="notification-detail-hero-main">
+                <div class="notification-detail-chips">
+                  <span class="notification-chip notification-chip--type">{{ notificationTypeLabel(modalState.data.type) }}</span>
+                  @if (modalState.data.isImportant) {
+                    <span class="notification-chip notification-chip--important">重要</span>
+                  }
+                  @if (modalState.data.isRead) {
+                    <span class="notification-chip notification-chip--read">既読</span>
+                  } @else {
+                    <span class="notification-chip notification-chip--unread">未読</span>
+                  }
+                </div>
+                <h2 class="notification-detail-title">{{ modalState.data.title }}</h2>
+                <p class="notification-detail-time">{{ notificationSentAt(modalState.data.createdAt) }}</p>
               </div>
             </div>
-            <p>通知内容</p>
-            <div class="modal-notification-body-wrapper">
-              <p>{{ authState.userName }}から{{ modalState.data.message }}</p>
-              @if (modalState.data.type === 'invite') {
+
+            <section class="notification-detail-section">
+              <h3 class="notification-detail-section-title">メッセージ</h3>
+              <div class="notification-detail-message-card">
+                @if (modalState.data.type === 'task-deadline') {
+                  <p class="notification-detail-from notification-detail-from--system">自動通知</p>
+                } @else {
+                  <p class="notification-detail-from">
+                    <span class="notification-detail-from-role">{{ notificationSenderRoleLabel(modalState.data.type) }}</span>
+                    <span class="notification-detail-from-name">{{ notificationSenderName(modalState.data) }}</span>
+                    <span class="notification-detail-from-suffix">から</span>
+                  </p>
+                }
+                <p class="notification-detail-message">{{ modalState.data.message }}</p>
+              </div>
+            </section>
+
+            @if (modalState.data.type === 'project-invite') {
+              <section class="notification-detail-section notification-detail-invite-block">
                 @if (modalState.data.status === 'pending') {
-                  <div class="modal-notification-invite-wrapper">
-                    <button (click)="acceptInvite(modalState.data.sourceId, 'project')">承諾する</button>
-                    <button (click)="declineInvite(modalState.data.sourceId, 'project')">拒否する</button>
+                  <p class="notification-detail-invite-hint">招待に応答すると、プロジェクトに参加できます。</p>
+                  <div class="notification-detail-invite-actions">
+                    <button class="notification-detail-btn notification-detail-btn--primary" type="button" (click)="acceptInvite(modalState.data.sourceId, 'project')">承諾する</button>
+                    <button class="notification-detail-btn notification-detail-btn--ghost" type="button" (click)="declineInvite(modalState.data.sourceId, 'project')">拒否する</button>
                   </div>
                 } @else if (modalState.data.status === 'accepted') {
-                  <p>招待はすでに承諾されています。</p>
+                  <div class="notification-detail-status-note notification-detail-status-note--ok">この招待は承諾済みです。</div>
                 } @else if (modalState.data.status === 'declined') {
-                  <p>招待はすでに拒否されています。</p>
+                  <div class="notification-detail-status-note">この招待は拒否済みです。</div>
+                } @else if (modalState.data.status === 'left') {
+                  <div class="notification-detail-status-note">退出済みの招待です。</div>
                 }
-              } @else if (modalState.data.type === 'team-invite') {
+              </section>
+            } @else if (modalState.data.type === 'team-invite') {
+              <section class="notification-detail-section notification-detail-invite-block">
                 @if (modalState.data.status === 'pending') {
-                  <div class="modal-notification-invite-wrapper">
-                    <button (click)="acceptInvite(modalState.data.sourceId, 'team')">承諾する</button>
-                    <button (click)="declineInvite(modalState.data.sourceId, 'team')">拒否する</button>
+                  <p class="notification-detail-invite-hint">招待に応答すると、チームに参加できます。</p>
+                  <div class="notification-detail-invite-actions">
+                    <button class="notification-detail-btn notification-detail-btn--primary" type="button" (click)="acceptInvite(modalState.data.sourceId, 'team')">承諾する</button>
+                    <button class="notification-detail-btn notification-detail-btn--ghost" type="button" (click)="declineInvite(modalState.data.sourceId, 'team')">拒否する</button>
                   </div>
                 } @else if (modalState.data.status === 'accepted') {
-                  <p>招待はすでに承諾されています。</p>
+                  <div class="notification-detail-status-note notification-detail-status-note--ok">この招待は承諾済みです。</div>
                 } @else if (modalState.data.status === 'declined') {
-                  <p>招待はすでに拒否されています。</p>
+                  <div class="notification-detail-status-note">この招待は拒否済みです。</div>
+                } @else if (modalState.data.status === 'left') {
+                  <div class="notification-detail-status-note">退出済みの招待です。</div>
                 }
-              }
-            </div>
+              </section>
+            }
           </div>
-          <div class="modal-footer">
+          <div class="modal-footer notification-detail-footer">
             @if (modalState.data.type === 'task-deadline') {
-              <button class="modal-footer-btn" (click)="openTaskFromNotification()">
-                タスクに移動
+              <button class="notification-detail-btn notification-detail-btn--primary notification-detail-btn--wide" type="button" (click)="openTaskFromNotification()">
+                タスクを開く
               </button>
             }
           </div>
@@ -525,59 +630,115 @@
   .full-page {
     width: 100%;
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background: #f3f5f4;
   }
   .topbar {
-    height: 40px;
+    min-height: 48px;
     display: flex;
-    gap: 14px;
     align-items: center;
-    padding: 0 20px;
-    background-color: rgb(32, 75, 38);
+    gap: 12px;
+    padding: 0 16px 0 12px;
+    background: linear-gradient(180deg, #1b4a20 0%, #204b26 100%);
     box-sizing: border-box;
     flex-shrink: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
   }
-  .user-info {
-    color: white;
+  .topbar-spacer {
+    flex: 1;
+    min-width: 8px;
+  }
+  .topbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
   }
   .menu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .menu-button:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+  .menu-button:focus-visible {
+    outline: 2px solid #c8e6c9;
+    outline-offset: 2px;
+  }
+  .menu-button-lines {
     width: 18px;
     height: 14px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    background: none;
-    border: none;
-    padding: 0;
-    margin-right: auto;
-    cursor: pointer;
   }
-  .menu-button span {
+  .menu-button-lines span {
     display: block;
     height: 2px;
     width: 100%;
-    background: white;
+    background: #fff;
     border-radius: 2px;
   }
-  .login-btn {
-    height: 30px;
-    padding: 0 10px;
-    display: flex;
+  .login-btn.login-btn--topbar {
+    min-height: 34px;
+    padding: 0 14px;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    background-color: white;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 8px;
     cursor: pointer;
-    border-radius: 4px;
     border: none;
+    box-sizing: border-box;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   }
-  .login-btn:hover {
-    background-color: #f0f0f0;
+  button.login-btn--topbar {
+    background: rgba(255, 255, 255, 0.95);
+    color: #1b3d1f;
   }
-  .login-text {
-    font-size: 14px;
-    font-weight: bold;
+  button.login-btn--topbar:hover {
+    background: #fff;
+    color: #0f2612;
+  }
+  a.login-btn--topbar {
+    text-decoration: none;
+    line-height: 1.2;
+  }
+  a.login-btn--link {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+  }
+  a.login-btn--link:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.65);
+  }
+  a.login-btn--primary-outline {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+  }
+  a.login-btn--primary-outline:hover {
+    background: rgba(255, 255, 255, 0.22);
+    border-color: #fff;
   }
   .main-content {
     display: flex;
@@ -588,27 +749,44 @@
   .left-side {
     align-self: stretch;
     min-height: 0;
-    width: 150px;
-    transition: ease 0.3s width;
+    width: 220px;
+    transition: width 0.28s ease, padding 0.28s ease, border-color 0.28s ease;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    background-color: rgb(109, 153, 125);
+    background: linear-gradient(180deg, #3d5c45 0%, #334e3b 48%, #2a4034 100%);
     flex-shrink: 0;
+    border-right: 1px solid rgba(0, 0, 0, 0.12);
+    box-sizing: border-box;
   }
   .left-side.closed {
     width: 0;
+    border-right-width: 0;
+    pointer-events: none;
   }
   .sidebar {
     display: flex;
-    align-items: center;
-    justify-content: center;
     flex-direction: column;
+    align-items: stretch;
+    padding: 16px 12px 12px;
+    gap: 4px;
   }
   .sidebar-title {
-    color: white;
-    font-weight: bold;
+    margin: 0 0 2px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+  }
+  .sidebar-subtitle {
+    margin: 0 0 12px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
   }
   .sidebar-menu {
     display: flex;
@@ -617,42 +795,80 @@
     align-items: stretch;
   }
   .sidebar-menu-btn {
-    border: none;
-    background: none;
-    color: white;
-    text-align: center;
-    padding: 6px 8px;
-    border-radius: 4px;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.92);
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 8px;
     font: inherit;
+    font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
     text-decoration: none;
-  }
-  .sidebar-menu-btn.active {
-    background-color: #3c5240;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   }
   .sidebar-menu-btn:hover {
-    background-color: #3c5240;
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+  .sidebar-menu-btn:focus-visible {
+    outline: 2px solid #c8e6c9;
+    outline-offset: 2px;
+  }
+  .sidebar-menu-btn.active {
+    background: rgba(200, 230, 201, 0.22);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
   }
   .profile {
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: 8px;
+    margin: 8px 12px 16px;
+    padding: 14px 10px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .profile:hover {
+    background: rgba(0, 0, 0, 0.18);
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+  .profile:focus-visible {
+    outline: 2px solid #c8e6c9;
+    outline-offset: 2px;
   }
   .profile-circle {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    background-color: #e2e1e1;
-    cursor: pointer;
-    transition: ease 0.3s width, ease 0.3s height;
-  }
-  .profile-circle:hover {
-    width: 50px;
-    height: 50px;
+    background: linear-gradient(145deg, #e8ece9, #c5d1c7);
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    flex-shrink: 0;
   }
   .profile-name {
-    font-size: 10px;
-    color: white;
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95);
+    text-align: center;
+    line-height: 1.35;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
   .main {
     flex: 1;
@@ -661,7 +877,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: rgb(255, 255, 255);
+    background-color: #f3f5f4;
   }
   .main-container {
     flex: 1;
@@ -673,7 +889,9 @@
     align-items: stretch;
     justify-content: flex-start;
     overflow-y: auto;
-    gap: 20px;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    gap: 0;
   }
   .main-container > .add-task-btn {
     align-self: center;
@@ -692,7 +910,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: rgba(0, 0, 0, 0.5);
+    padding: 16px;
+    box-sizing: border-box;
+    background-color: rgba(17, 24, 20, 0.45);
+    backdrop-filter: blur(2px);
     z-index: 200;
     overflow: hidden;
   }
@@ -700,20 +921,52 @@
     display: flex;
     flex-direction: column;
     max-width: 800px;
-    width: 85%;
+    width: min(800px, 100%);
     height: 70%;
-    background-color: white;
-    border-radius: 10px;
+    max-height: min(720px, 90vh);
+    background-color: #fff;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
     box-sizing: border-box;
+    overflow: hidden;
   }
   .modal-top {
-    padding: 0 10px;
-    line-height: 1;
+    padding: 12px 16px;
+    min-height: 48px;
+    line-height: 1.2;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e8e8e8;
     flex-shrink: 0;
+    box-sizing: border-box;
+  }
+  .modal-top > p:first-child {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a1a1a;
+  }
+  .close-modal-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    font-size: 22px;
+    line-height: 1;
+    color: #6b7280;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .close-modal-btn:hover {
+    background: #f3f4f6;
+    color: #111827;
   }
   .modal-body {
     padding: 10px 10px;
@@ -733,6 +986,177 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+  /* プロジェクト編集モーダル（招待・退出込み） */
+  .project-edit-modal-form.modal-form {
+    height: auto;
+    max-height: min(720px, 90vh);
+    max-width: 520px;
+    width: min(520px, 92vw);
+  }
+  .project-edit-modal-form .modal-title {
+    margin: 0;
+    padding: 12px 0;
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .project-edit-body.modal-body {
+    align-items: stretch;
+    padding: 16px 18px;
+    gap: 0;
+  }
+  .project-edit-section {
+    padding-bottom: 18px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid #eef0f3;
+  }
+  .project-edit-section:last-of-type {
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border-bottom: none;
+  }
+  .project-edit-section-title {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #374151;
+    letter-spacing: 0.02em;
+  }
+  .project-edit-section-hint {
+    margin: 0 0 10px;
+    font-size: 13px;
+    color: #6b7280;
+    line-height: 1.45;
+  }
+  .project-edit-fields {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 10px 12px;
+    align-items: center;
+  }
+  .project-edit-fields .project-edit-label:last-of-type,
+  .project-edit-fields .project-edit-input:last-of-type {
+    align-self: start;
+  }
+  .project-edit-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    margin: 0;
+  }
+  .project-edit-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #c8ccc9;
+    border-radius: 8px;
+    font-size: 14px;
+    box-sizing: border-box;
+    background: #f9fafb;
+  }
+  .project-edit-input:focus {
+    outline: none;
+    border-color: #4ea356;
+    background: #fff;
+  }
+  .project-edit-textarea {
+    resize: vertical;
+    min-height: 72px;
+    line-height: 1.45;
+    font-family: inherit;
+  }
+  .modal-content-email-input-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .modal-content-email-input-container input[type='email'] {
+    flex: 1;
+    min-width: 200px;
+    padding: 10px 12px;
+    border: 1px solid #c8ccc9;
+    border-radius: 8px;
+    font-size: 14px;
+    box-sizing: border-box;
+    background: #f9fafb;
+  }
+  .modal-content-email-input-container input[type='email']:focus {
+    outline: none;
+    border-color: #4ea356;
+    background: #fff;
+  }
+  .project-invite-btn {
+    padding: 8px 16px;
+    background: #4ea356;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .project-invite-btn:hover {
+    background: #255c2b;
+  }
+  .modal-footer.project-edit-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 16px 18px 20px;
+  }
+  .project-edit-save-btn {
+    padding: 10px 16px;
+    background: #1b5214;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .project-edit-save-btn:hover {
+    background: #164512;
+  }
+  .project-edit-danger-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-start;
+    padding-top: 4px;
+    border-top: 1px dashed #e5e7eb;
+    margin-top: 4px;
+  }
+  .project-edit-leave-btn {
+    padding: 8px 14px;
+    background: #fff;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .project-edit-leave-btn:hover {
+    background: #fffbeb;
+  }
+  .project-edit-delete-btn {
+    padding: 8px 14px;
+    background: #fff8f7;
+    color: #b3261e;
+    border: 1px solid #f0c4c0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .project-edit-delete-btn:hover {
+    background: #ffefee;
+  }
+  @media (max-width: 480px) {
+    .project-edit-fields {
+      grid-template-columns: 1fr;
+    }
+  }
 
   /* タスク */
   .add-task-btn {
@@ -884,13 +1308,28 @@
     font-size: 14px;
     cursor: pointer;
   }
-  .task-add-tag-new input[type='color'] {
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
+  .tag-color-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .tag-color-swatch {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 2px solid rgba(0, 0, 0, 0.12);
     cursor: pointer;
+    padding: 0;
+    outline: none;
+    box-sizing: border-box;
+  }
+  .tag-color-swatch:hover {
+    border-color: rgba(0, 0, 0, 0.32);
+  }
+  .tag-color-swatch.active {
+    border-color: #111827;
+    box-shadow: 0 0 0 2px rgba(78, 163, 86, 0.25);
   }
   .edit-task-item select,
   .edit-task-item input[type='date'],
@@ -1144,30 +1583,243 @@
     background-color: #f0f0f0;
   }
 
-  /* 受信トレイ */
-  .modal-notification-title-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+  /* 受信トレイ・通知詳細モーダル */
+  .notification-detail-modal.modal-form {
+    max-width: 480px;
+    width: min(480px, 92vw);
+    height: auto;
+    max-height: min(640px, 88vh);
   }
-  .modal-notification-title-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background-color: #4ea356;
+  .notification-detail-header {
+    padding: 14px 16px;
+    align-items: flex-start;
   }
-  .modal-notification-text-wrapper {
+  .notification-detail-header-text {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: 4px;
+    min-width: 0;
   }
-  .modal-notification-time {
-    font-size: 12px;
-    color: #999;
-  }
-  .modal-notification-text-wrapper p {
+  .notification-detail-eyebrow {
     margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #6b7280;
   }
+  .notification-detail-heading {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: #111827;
+  }
+  .notification-detail-close {
+    flex-shrink: 0;
+  }
+  .notification-detail-body.modal-body {
+    align-items: stretch;
+    padding: 16px 18px 20px;
+    gap: 16px;
+  }
+  .notification-detail-hero {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 14px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f8faf8 0%, #f0f4f1 100%);
+    border: 1px solid #e3ebe4;
+  }
+  .notification-detail-icon {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(30, 49, 18, 0.12);
+  }
+  .notification-detail-icon--project {
+    background: linear-gradient(145deg, #5cb564, #3d8f45);
+  }
+  .notification-detail-icon--team {
+    background: linear-gradient(145deg, #5b8fc9, #3d6fa8);
+  }
+  .notification-detail-icon--deadline {
+    background: linear-gradient(145deg, #e8a04a, #c6781a);
+  }
+  .notification-detail-icon--default {
+    background: linear-gradient(145deg, #8a9ba8, #5c6b78);
+  }
+  .notification-detail-hero-main {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .notification-detail-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .notification-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .notification-chip--type {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border: 1px solid #c8e6c9;
+  }
+  .notification-chip--important {
+    background: #fff3e0;
+    color: #e65100;
+    border: 1px solid #ffe0b2;
+  }
+  .notification-chip--read {
+    background: #f3f4f6;
+    color: #6b7280;
+    border: 1px solid #e5e7eb;
+  }
+  .notification-chip--unread {
+    background: #fce4ec;
+    color: #ad1457;
+    border: 1px solid #f8bbd9;
+  }
+  .notification-detail-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.35;
+  }
+  .notification-detail-time {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+  }
+  .notification-detail-section {
+    width: 100%;
+  }
+  .notification-detail-section-title {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #374151;
+  }
+  .notification-detail-message-card {
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+  .notification-detail-from {
+    margin: 0 0 8px;
+    font-size: 13px;
+    color: #6b7280;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .notification-detail-from-role {
+    font-weight: 600;
+    color: #374151;
+    flex-shrink: 0;
+  }
+  .notification-detail-from-name {
+    font-weight: 600;
+    color: #1f2937;
+  }
+  .notification-detail-from-suffix {
+    font-weight: 400;
+  }
+  .notification-detail-from--system {
+    font-weight: 600;
+    color: #4b5563;
+  }
+  .notification-detail-message {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.55;
+    color: #1f2937;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .notification-detail-invite-block {
+    padding-top: 4px;
+  }
+  .notification-detail-invite-hint {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: #4b5563;
+    line-height: 1.5;
+  }
+  .notification-detail-invite-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .notification-detail-btn {
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .notification-detail-btn--primary {
+    background: #1b5214;
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(27, 82, 20, 0.25);
+  }
+  .notification-detail-btn--primary:hover {
+    background: #164a12;
+  }
+  .notification-detail-btn--ghost {
+    background: #fff;
+    color: #374151;
+    border: 1px solid #d1d5db;
+  }
+  .notification-detail-btn--ghost:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+  }
+  .notification-detail-btn--wide {
+    min-width: 160px;
+  }
+  .notification-detail-status-note {
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    background: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+  }
+  .notification-detail-status-note--ok {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border-color: #c8e6c9;
+  }
+  .notification-detail-footer.modal-footer {
+    padding: 14px 18px 18px;
+    border-top: 1px solid #e5e7eb;
+    justify-content: stretch;
+  }
+  .notification-detail-footer .notification-detail-btn--wide {
+    width: 100%;
+    justify-content: center;
+  }
+
   .modal-footer-btn {
     padding: 8px 15px;
     font-size: 16px;

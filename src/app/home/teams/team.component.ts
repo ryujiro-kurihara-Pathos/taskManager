@@ -1,17 +1,26 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterModule } from '@angular/router';
-import { AddTeamInput, initialTeamInput, Team } from '../../types/team';
+import { Team, TeamMember } from '../../types/team';
 import {
-    addTeam,
+    addTeam as addTeamToFirestore,
     addTeamMember,
     getTeamsByIds,
-    getTeamMembersByTeamId,
     getTeamIdsByUserId,
+    getTeamMembersByTeamId,
+    getTaskCountByTeamId,
+    getUser,
 } from '../../firestore';
 import { AuthStateService } from '../../services/auth-state.service';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { AuthService } from '../../services/auth.service';
+import { TasksService } from '../../services/tasks.service';
+
+/** 一覧表示用（タスク数・メンバー解決済み） */
+type TeamListRow = Team & {
+    taskCount: number;
+    teamMembers: TeamMember[];
+};
 
 @Component({
     selector: 'app-teams',
@@ -19,97 +28,132 @@ import { AuthService } from '../../services/auth.service';
     standalone: true,
     imports: [CommonModule, FormsModule, RouterModule],
 })
-
-export class TeamComponent {
+export class TeamComponent implements OnInit {
     authState = inject(AuthStateService);
     authService = inject(AuthService);
+    tasksService = inject(TasksService);
 
-    // 追加するチーム
-    addingTeam: AddTeamInput = { ...initialTeamInput };
-    // teams: Team[] = [];
-    teams = signal<Team[]>([]);
+    teams = signal<TeamListRow[]>([]);
 
-    async ngOnInit() {
-        this.authService.watchAuthState(async(user) => {
-            if(!user) {
+    searchQuery = signal('');
+    filteredTeams = computed(() => this.filterTeamsBySearchQuery(this.teams()));
+
+    isTeamAddModalOpen = false;
+    newTeamName = '';
+    newTeamDescription = '';
+
+    ngOnInit() {
+        this.authService.watchAuthState(async (user) => {
+            if (!user) {
                 this.clearTeams();
                 return;
             }
-            this.loadTeams();
-        })
+            await this.loadTeams();
+        });
     }
 
-    setTeams(teams: Team[]) {
-        this.teams.set(teams);
+    setTeams(rows: TeamListRow[]) {
+        this.teams.set(rows);
     }
 
     clearTeams() {
         this.teams.set([]);
     }
 
-    addTeam(team: Team) {
-        this.teams.update(teams => [...teams, team]);
+    private pushTeamRow(row: TeamListRow) {
+        this.teams.update((teams) => [row, ...teams]);
     }
 
-    // チームをロードする
     async loadTeams() {
         try {
             const uid = this.authState.uid;
-            if(!uid) return;
-            const teams = await this.getUserTeams(uid);
-            this.setTeams(teams);
+            if (!uid) return;
+            const teamIds = [...new Set(await getTeamIdsByUserId(uid))];
+            const list = await getTeamsByIds(teamIds);
+            const hydrated = await Promise.all(list.map((t) => this.hydrateTeamRow(t)));
+            this.setTeams(hydrated);
         } catch (error) {
-            console.error("チームロード失敗: ", error);
+            console.error('チームロード失敗: ', error);
         }
     }
 
-    // チームを追加
-    async addTeams() {
+    private async hydrateTeamRow(team: Team): Promise<TeamListRow> {
+        const [taskCount, rawMembers] = await Promise.all([
+            this.safeTaskCount(team.id),
+            getTeamMembersByTeamId(team.id),
+        ]);
+        const teamMembers = await Promise.all(
+            rawMembers.map(async (m) => {
+                const user = await getUser(m.userId);
+                return { ...m, user } as TeamMember;
+            }),
+        );
+        return {
+            ...team,
+            taskCount,
+            teamMembers,
+        };
+    }
+
+    private async safeTaskCount(teamId: string): Promise<number> {
         try {
+            return await getTaskCountByTeamId(teamId);
+        } catch (error) {
+            console.error('タスク数取得に失敗しました', error);
+            return 0;
+        }
+    }
+
+    private normalizeForSearch(value: unknown): string {
+        const s = value == null ? '' : String(value);
+        try {
+            return s.normalize('NFKC').trim().toLowerCase();
+        } catch {
+            return s.trim().toLowerCase();
+        }
+    }
+
+    private filterTeamsBySearchQuery(rows: TeamListRow[]): TeamListRow[] {
+        const q = this.normalizeForSearch(this.searchQuery());
+        if (!q) return rows;
+        return rows.filter((t) => this.normalizeForSearch(t.name).includes(q));
+    }
+
+    openTeamAddModal() {
+        this.isTeamAddModalOpen = true;
+    }
+
+    closeTeamAddModal() {
+        this.isTeamAddModalOpen = false;
+        this.newTeamName = '';
+        this.newTeamDescription = '';
+    }
+
+    /** 作成モーダルから送信 */
+    async submitCreateTeam() {
+        try {
+            if (this.newTeamName.trim() === '') return;
             const uid = this.authState.uid;
-            if(!uid) return;
-            const teamResult: Team = await addTeam({
-                name: this.addingTeam.name,
+            if (!uid) return;
+
+            const teamResult = await addTeamToFirestore({
+                name: this.newTeamName.trim(),
                 ownerId: uid,
-                description: this.addingTeam.description,
+                description: this.newTeamDescription.trim(),
             });
-            if(!teamResult) return;
+            if (!teamResult) return;
+
             await addTeamMember({
                 teamId: teamResult.id,
                 userId: uid,
                 role: 'owner',
             });
 
-            this.addTeam(teamResult);
-            this.addingTeam = { ...initialTeamInput };
+            const row = await this.hydrateTeamRow(teamResult);
+            this.pushTeamRow(row);
+            this.closeTeamAddModal();
         } catch (error) {
-            console.error("チーム追加失敗: ", error);
-        }
-    }
-
-    // 所属しているチームを取得
-    async getUserTeams(uid: string) {
-        try {
-            if(!uid) return [];
-            // ユーザーIDが一致するteamIDを取得
-            const teamMemberIds = await getTeamIdsByUserId(uid);
-            // teamIDからteamを取得
-            const teams = await getTeamsByIds(teamMemberIds);
-            return teams;
-        } catch (error) {
-            console.error("チーム取得失敗: ", error);
-            return [];
-        }
-    }
-
-    // チームメンバーを取得
-    async getTeamMembersByTeamId(teamId: string) {
-        try {
-            const teamMembers = await getTeamMembersByTeamId(teamId);
-            return teamMembers;
-        } catch (error) {
-            console.error("チームメンバー取得失敗: ", error);
-            return [];
+            console.error('チーム追加失敗: ', error);
         }
     }
 }

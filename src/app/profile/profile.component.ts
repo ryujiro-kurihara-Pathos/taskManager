@@ -1,7 +1,7 @@
-import { Component } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, inject } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { watchAuthState, updateUserName } from '../auth';
+import { watchAuthState, updateUserName, logout } from '../auth';
 
 @Component({
     selector: 'app-profile',
@@ -10,6 +10,8 @@ import { watchAuthState, updateUserName } from '../auth';
 })
 
 export class ProfileComponent {
+    private router = inject(Router);
+
     // ユーザー情報
     userName: string = '';
     userEmail: string = '';
@@ -20,6 +22,9 @@ export class ProfileComponent {
 
     // モード切り替え
     isEditing: boolean = false;
+
+    /** ログアウト最終確認 */
+    showLogoutConfirm = false;
 
     ngOnInit() {
         watchAuthState((user) => {
@@ -50,5 +55,23 @@ export class ProfileComponent {
             this.userName = this.editName;
             this.isEditing = false;
         } catch(error) {}
+    }
+
+    openLogoutConfirm() {
+        this.showLogoutConfirm = true;
+    }
+
+    cancelLogoutConfirm() {
+        this.showLogoutConfirm = false;
+    }
+
+    async confirmLogout() {
+        this.showLogoutConfirm = false;
+        try {
+            await logout();
+            await this.router.navigate(['/login']);
+        } catch (error) {
+            console.error(error);
+        }
     }
 }
