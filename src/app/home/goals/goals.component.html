@@ -174,7 +174,7 @@
       </div>
     }
 
-    <h3 class="goal-subheading">関連タスク（goalId）</h3>
+    <h3 class="goal-subheading">関連タスク</h3>
     <ul class="goal-task-list">
       @for (t of detailLinkedTasks(); track t.id) {
         <li [class.invalid]="!taskLinkValid(g, t)">

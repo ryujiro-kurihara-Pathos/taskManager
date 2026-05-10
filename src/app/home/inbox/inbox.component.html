@@ -39,7 +39,7 @@
                                 [class.isRead]="notification.isRead"
                                 type="button"
                                 (click)="openDetailModal(notification)">
-                                <div class="inbox-icon" aria-hidden="true"></div>
+                                <div class="inbox-icon inbox-icon--{{ notification.type }}" aria-hidden="true"></div>
                                 <div class="inbox-item-text">
                                     <p>{{ notification.title }}</p>
                                     <p>{{ notification.message }}</p>
@@ -239,8 +239,10 @@
         background: #f9fafb;
     }
     .inbox-item:not(.isRead) {
-        border-left: 3px solid #4ea356;
-        padding-left: 11px;
+        /* border-left: 3px solid #4ea356;
+        padding-left: 11px; */
+        background-color: #e1f4e3;
+        border: 1px solid #5a915e;
     }
     .inbox-item.isRead {
         border-color: #e0e0e0;
@@ -251,6 +253,17 @@
         border-radius: 50%;
         background: linear-gradient(145deg, #5cb564, #3d8f45);
     }
+    .inbox-icon--project-invite {
+        background: linear-gradient(145deg, #5cb564, #3d8f45);
+    }
+    .inbox-icon--team-invite {
+        background: linear-gradient(145deg, #5b8fc9, #3d6fa8);
+    }
+    .inbox-icon--task-deadline {
+        background: linear-gradient(145deg, #e8a04a, #c6781a);
+    }
+
+
     .inbox-item-text {
         min-width: 0;
         display: flex;

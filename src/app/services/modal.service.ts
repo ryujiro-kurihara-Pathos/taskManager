@@ -6,6 +6,8 @@ import {
     getTask,
     getUsers,
     getUser,
+    getProjectTaskAssignableUsers,
+    getTeamTaskAssignableUsers,
 } from '../firestore';
 import { Task } from '../types/task';
 import { TeamMember } from '../types/team';
@@ -15,6 +17,7 @@ type ModalType =
 'task-edit' | 
 'task-add' | 
 'project-edit' |
+'team-edit' |
 'project-invite' |
 'project-member-list' |
 'notification-detail' |
@@ -55,7 +58,13 @@ export class ModalService {
 
         if(data) {
             // 担当者候補を取得
-            data.assignableUsers = await this.getAssignableUsers(type, data);
+            if(data.projectId) {
+                data.assignableUsers = await getProjectTaskAssignableUsers(data.projectId);
+            } else if(data.teamId) {
+                data.assignableUsers = await getTeamTaskAssignableUsers(data.teamId);
+            } else {
+                data.assignableUsers = [];
+            }
         }
 
         // モーダルを開く

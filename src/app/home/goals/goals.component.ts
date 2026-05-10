@@ -1,4 +1,6 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -15,7 +17,7 @@ import { db } from '../../firebase';
 import { AuthStateService } from '../../services/auth-state.service';
 import { AuthService } from '../../services/auth.service';
 import {
-  getMainTasks,
+  getPersonalInboxTasks,
   getProjectMembers,
   getProjectsByUserId,
   getTasksByProjectId,
@@ -58,6 +60,7 @@ type TaskWithGoal = Task & { goalId?: string | null };
 export class GoalComponent implements OnInit {
   private authState = inject(AuthStateService);
   private authService = inject(AuthService);
+  private route = inject(ActivatedRoute);
 
   readonly tabs: { id: GoalScope; label: string }[] = [
     { id: 'personal', label: '個人目標' },
@@ -98,6 +101,12 @@ export class GoalComponent implements OnInit {
   /** 編集用（詳細モーダル内） */
   editDraft: Partial<Goal> = {};
 
+  constructor() {
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => void this.applyGoalRouteParams());
+  }
+
   ngOnInit(): void {
     this.authService.watchAuthState((user) => {
       if (!user) {
@@ -106,8 +115,28 @@ export class GoalComponent implements OnInit {
         this.myTeams.set([]);
         return;
       }
-      void this.reloadAll(user.uid);
+      void this.reloadAll(user.uid).then(() => void this.applyGoalRouteParams());
     });
+  }
+
+  /** プロフィール等からの ?tab= &goalId= を反映 */
+  private async applyGoalRouteParams(): Promise<void> {
+    const uid = this.authState.uid;
+    if (!uid) return;
+    const pm = this.route.snapshot.queryParamMap;
+    const tab = pm.get('tab');
+    if (tab === 'personal' || tab === 'project' || tab === 'team') {
+      this.activeTab.set(tab);
+    }
+    const goalId = pm.get('goalId');
+    if (!goalId) return;
+    if (this.goals().length === 0) {
+      await this.reloadAll(uid);
+    }
+    const g = this.goals().find((x) => x.id === goalId);
+    if (g) {
+      await this.openDetail(g);
+    }
   }
 
   private toIso(v: unknown): string {
@@ -438,7 +467,7 @@ export class GoalComponent implements OnInit {
     const uid = this.uid();
     if (!uid) return [];
     if (goal.scope === 'personal') {
-      const main = await getMainTasks(uid);
+      const main = await getPersonalInboxTasks(uid);
       return main as TaskWithGoal[];
     }
     if (goal.scope === 'project' && goal.projectId) {

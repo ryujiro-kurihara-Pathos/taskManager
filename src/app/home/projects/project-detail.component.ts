@@ -1,19 +1,29 @@
-import { Component, computed, inject, signal } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import {
+    Component,
+    HostListener,
+    OnDestroy,
+    OnInit,
+    computed,
+    inject,
+    signal,
+} from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import {
     getProject,
     getProjectMembers,
     getUser,
     updateTask,
     deleteChildrenTask,
+    subscribeTasksByProjectId,
+    addTask,
 } from '../../firestore';
 import { Project } from '../../types/project';
-import { getTasksByProjectId } from '../../firestore';
 import { AddTaskInput, SortKey, Task } from '../../types/task';
+import { isTaskCreator } from '../../utils/task-permissions';
 import { FormsModule } from '@angular/forms';
-import { addTask } from '../../firestore';
 import { AuthStateService } from '../../services/auth-state.service';
 import { ModalService } from '../../services/modal.service';
+import { TasksService } from '../../services/tasks.service';
 import { CommonModule } from '@angular/common';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 
@@ -22,69 +32,75 @@ import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
     templateUrl: './project-detail.component.html',
     imports: [FormsModule, CommonModule, DragDropModule],
 })
-
-export class ProjectDetailComponent {
-    constructor(private modalService: ModalService, private router: Router) {}
-
+export class ProjectDetailComponent implements OnInit, OnDestroy {
     private route = inject(ActivatedRoute);
+    private modalService = inject(ModalService);
     authStateService = inject(AuthStateService);
+    tasksService = inject(TasksService);
 
-    // ヘッダー
-    // 表示形式
     displayFormat: 'list' | 'board' | 'calendar' = 'list';
 
-    // メイン
     projectId = this.route.snapshot.paramMap.get('projectId');
     project: Project | null = null;
-    /** プロジェクト内タスク（ボード CDK 用に signal） */
     tasks = signal<Task[]>([]);
-    readonly boardTodos = computed(() =>
-        this.tasks().filter((t) => t.status === '未着手'),
-    );
-    readonly boardInProgress = computed(() =>
-        this.tasks().filter((t) => t.status === '進行中'),
-    );
-    readonly boardOnHold = computed(() =>
-        this.tasks().filter((t) => t.status === '保留'),
-    );
-    readonly boardDone = computed(() =>
-        this.tasks().filter((t) => t.status === '完了'),
-    );
-    newTaskTitle: string = '';
 
-    // リスト（tasks.component と同様。TasksService は共有しない）
+    readonly filteredBoardTodos = computed(() =>
+        this.tasksService.applySearchOnly(
+            this.tasks().filter((t) => t.status === '未着手'),
+        ),
+    );
+    readonly filteredBoardInProgress = computed(() =>
+        this.tasksService.applySearchOnly(
+            this.tasks().filter((t) => t.status === '進行中'),
+        ),
+    );
+    readonly filteredBoardOnHold = computed(() =>
+        this.tasksService.applySearchOnly(
+            this.tasks().filter((t) => t.status === '保留'),
+        ),
+    );
+    readonly filteredBoardDone = computed(() =>
+        this.tasksService.applySearchOnly(
+            this.tasks().filter((t) => t.status === '完了'),
+        ),
+    );
+
     selectedTaskIds: string[] = [];
-    listSearchQuery = signal('');
-    listSortKey: SortKey = null;
     isSortMenuOpen = false;
     isSelectedSort = false;
-    priorityFilter: '高' | '中' | '低' | '未設定' | null = null;
-    isPriorityFilterOpen = false;
-    progressFilter: '未着手' | '進行中' | '保留' | '完了' | null = null;
-    isProgressFilterOpen = false;
-    dueDateFilter: '今日' | '明日' | '1週間' | '未設定' | null = null;
-    isDueDateFilterOpen = false;
 
-    // カレンダー
     weekDates: Date[] = [];
     currentDate = new Date();
-    /** ガント行の高さ（getTaskTop と一致） */
     readonly calendarRowHeightPx = 48;
-    /** ヘッダー列（曜日・日付）の下からタスク層までのオフセット（tasks.component.html の .task-layer top と一致） */
     readonly calendarHeaderBandPx = 65;
+
+    private tasksUnsub: (() => void) | null = null;
+    /** 遅い loadTaskTags が後から終わって古い一覧で上書きしないため */
+    private projectTasksSnapshotSeq = 0;
 
     async ngOnInit() {
         this.weekDates = this.getWeekDates(this.currentDate);
-        if(!this.projectId) return;
-        // プロジェクトを取得
+        if (!this.projectId) return;
         this.project = await this.getProject(this.projectId);
-        if(!this.project) return;
-        // プロジェクトタスクを取得
-        this.tasks.set(await this.getTasksByProjectId(this.projectId));
+        if (!this.project) return;
 
-        // プロジェクトメンバーを取得
+        this.tasksUnsub?.();
+        const pid = this.projectId;
+        this.tasksUnsub = subscribeTasksByProjectId(pid, (incoming) => {
+            const seq = ++this.projectTasksSnapshotSeq;
+            void this.tasksService.loadTaskTags(incoming).then(() => {
+                if (seq !== this.projectTasksSnapshotSeq) return;
+                this.tasks.set(incoming);
+            });
+        });
+
         const projectMembers = await this.getProjectMembers(this.projectId);
         this.project.projectMembers = projectMembers;
+    }
+
+    ngOnDestroy(): void {
+        this.tasksUnsub?.();
+        this.tasksUnsub = null;
     }
 
     openProjectEditModal(project: Project) {
@@ -95,17 +111,20 @@ export class ProjectDetailComponent {
         this.modalService.open('project-member-list', project);
     }
 
-    // タスク追加モーダルを開く
     openTaskAddModal(project: Project) {
         this.modalService.open('project-add-task', project);
     }
 
-    closeTaskAddModal() {
-        
+    openTaskModal(type: 'task-edit' | 'task-add', task: unknown) {
+        this.modalService.open(type, task);
     }
 
-    openTaskModal(type: 'task-edit' | 'task-add', task: any) {
-        this.modalService.open(type, task);
+    isTaskCreatorTask(task: Task): boolean {
+        return isTaskCreator(task, this.authStateService.uid);
+    }
+
+    deletableDisplayedTasks(status: 'notDone' | 'done' | null = null): Task[] {
+        return this.displayTasks(status).filter((t) => this.isTaskCreatorTask(t));
     }
 
     async dropTask(event: CdkDragDrop<Task[]>) {
@@ -113,6 +132,9 @@ export class ProjectDetailComponent {
             return;
         }
         const movedTask = event.previousContainer.data[event.previousIndex];
+        if (!this.isTaskCreatorTask(movedTask)) {
+            return;
+        }
         const newStatus = event.container.id as Task['status'];
 
         this.tasks.update((current) =>
@@ -132,35 +154,19 @@ export class ProjectDetailComponent {
         }
     }
 
-    // ドキュメントIDからプロジェクトを取得
     async getProject(projectId: string) {
         try {
-            const project = await getProject(projectId);
-            return project;
+            return await getProject(projectId);
         } catch (error) {
             console.error('プロジェクトを取得できませんでした', error);
             return null;
         }
     }
 
-    // プロジェクトに所属するタスクを取得
-    async getTasksByProjectId(projectId: string) {
-        try {
-            if(!projectId) return [];
-
-            const tasks = await getTasksByProjectId(projectId);
-            return tasks;
-        } catch (error) {
-            console.error('プロジェクトに所属するタスクを取得できませんでした', error);
-            return [];
-        }
-    }
-
-    // タスクを追加
     async addTask(title: string) {
         try {
             const user = this.authStateService.user();
-            if(!user) return;
+            if (!user) return;
             const task: AddTaskInput = {
                 uid: user.id,
                 title: title,
@@ -174,23 +180,21 @@ export class ProjectDetailComponent {
                 assignedUid: null,
                 teamId: null,
                 tagIds: [],
-            }
+            };
             const newTask = await addTask(task);
             if (!newTask) return;
-            this.tasks.update((current) => [...current, newTask]);
-            this.closeTaskAddModal();
+            // 一覧は subscribeTasksByProjectId のスナップショットで更新（二重追加を避ける）
         } catch (error) {
             console.error('タスクを追加できませんでした', error);
-            return;
         }
     }
-    // プロジェクトメンバーを取得
+
     async getProjectMembers(projectId: string) {
         try {
             const projectMembers = await getProjectMembers(projectId);
             projectMembers.forEach(async (member) => {
                 const user = await getUser(member.userId);
-                if(!user) return;
+                if (!user) return;
                 member.user = user;
             });
             return projectMembers;
@@ -200,132 +204,55 @@ export class ProjectDetailComponent {
         }
     }
 
-    displayTasks(status: 'notDone' | 'done'): Task[] {
-        let list = [...this.tasks()];
-        if (status === 'notDone') {
-            list = list.filter((t) => t.status !== '完了');
-        } else {
-            list = list.filter((t) => t.status === '完了');
-        }
-        if (this.priorityFilter) {
-            if (this.priorityFilter === '未設定') {
-                list = list.filter((t) => t.priority === null);
-            } else {
-                list = list.filter((t) => t.priority === this.priorityFilter);
-            }
-        }
-        if (this.progressFilter) {
-            list = list.filter((t) => t.status === this.progressFilter);
-        }
-        if (this.dueDateFilter) {
-            if (this.dueDateFilter === '今日') {
-                list = list.filter(
-                    (t) => t.dueDate && this.isDueDateWithin(t.dueDate, 0),
-                );
-            } else if (this.dueDateFilter === '明日') {
-                list = list.filter(
-                    (t) => t.dueDate && this.isDueDateWithin(t.dueDate, 1),
-                );
-            } else if (this.dueDateFilter === '1週間') {
-                list = list.filter(
-                    (t) => t.dueDate && this.isDueDateWithin(t.dueDate, 7),
-                );
-            } else if (this.dueDateFilter === '未設定') {
-                list = list.filter((t) => t.dueDate === null);
-            }
-        }
-        if (this.listSortKey) {
-            list.sort((a, b) => {
-                if (this.listSortKey === 'dueDate') {
-                    const aTime = a.dueDate
-                        ? new Date(a.dueDate).getTime()
-                        : Number.MAX_SAFE_INTEGER;
-                    const bTime = b.dueDate
-                        ? new Date(b.dueDate).getTime()
-                        : Number.MAX_SAFE_INTEGER;
-                    return aTime - bTime;
-                }
-                if (this.listSortKey === 'createdAt') {
-                    const aTime = this.getTimeValue(a.createdAt);
-                    const bTime = this.getTimeValue(b.createdAt);
-                    return bTime - aTime;
-                }
-                if (this.listSortKey === 'updatedAt') {
-                    const aTime = this.getTimeValue(a.updatedAt);
-                    const bTime = this.getTimeValue(b.updatedAt);
-                    return bTime - aTime;
-                }
-                return 0;
-            });
-        }
-        return this.filterTasksBySearchQuery(list);
+    displayTasks(status: 'notDone' | 'done' | null = null): Task[] {
+        return this.tasksService.applyListPipeline([...this.tasks()], status);
     }
 
-    private normalizeForSearch(value: unknown): string {
-        const s = value == null ? '' : String(value);
-        try {
-            return s.normalize('NFKC').trim().toLowerCase();
-        } catch {
-            return s.trim().toLowerCase();
-        }
-    }
-
-    private filterTasksBySearchQuery(tasks: Task[]): Task[] {
-        const q = this.normalizeForSearch(this.listSearchQuery());
-        if (!q) return tasks;
-        return tasks.filter((t) => {
-            const title = this.normalizeForSearch(t.title);
-            const memo = this.normalizeForSearch(t.memo);
-            return title.includes(q) || memo.includes(q);
-        });
-    }
-
-    getTimeValue(value: unknown): number {
-        if (!value) return 0;
-        if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
-            return (value as { toDate: () => Date }).toDate().getTime();
-        }
-        if (typeof (value as { seconds?: number }).seconds === 'number') {
-            return (value as { seconds: number }).seconds * 1000;
-        }
-        const time = new Date(value as string).getTime();
-        return Number.isNaN(time) ? 0 : time;
-    }
-
-    isDueDateWithin(dueDate: string, days: number): boolean {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const date = new Date(today);
-        date.setDate(date.getDate() + days);
-        date.setHours(0, 0, 0, 0);
-        const due = new Date(dueDate);
-        due.setHours(0, 0, 0, 0);
-        return (
-            due.getTime() >= today.getTime() && due.getTime() <= date.getTime()
-        );
+    /** 担当者列: assignedUid に対応する表示名（なければ「未設定」） */
+    assigneeName(task: Task): string {
+        if (!task.assignedUid) return '未設定';
+        const uid = task.assignedUid;
+        const fromAssignable = task.assignableUsers?.find((u) => u.id === uid);
+        if (fromAssignable?.userName) return fromAssignable.userName;
+        const members = this.project?.projectMembers ?? [];
+        const member = members.find((m) => m.userId === uid);
+        if (member?.user?.userName) return member.user.userName;
+        return '未設定';
     }
 
     toggleSortMenu() {
         if (this.isSortMenuOpen) {
             this.isSortMenuOpen = false;
         } else {
-            this.isPriorityFilterOpen = false;
-            this.isProgressFilterOpen = false;
-            this.isDueDateFilterOpen = false;
+            this.tasksService.closeAllFilterMenus();
             this.isSortMenuOpen = true;
         }
     }
 
     selectSort(sortKey: SortKey) {
-        this.listSortKey = sortKey;
+        this.tasksService.sortKey = sortKey;
         this.isSortMenuOpen = false;
         this.isSelectedSort = true;
     }
 
     clearSort() {
-        this.listSortKey = null;
-        this.isSelectedSort = false;
+        this.tasksService.sortKey = null;
         this.isSortMenuOpen = false;
+        this.isSelectedSort = false;
+    }
+
+    closeSortMenu() {
+        this.isSortMenuOpen = false;
+    }
+
+    closeAllMenus() {
+        this.closeSortMenu();
+        this.tasksService.closeAllFilterMenus();
+    }
+
+    @HostListener('document:click')
+    onDocumentClick() {
+        this.closeAllMenus();
     }
 
     getSortLabel(sortKey: SortKey): string {
@@ -341,42 +268,9 @@ export class ProjectDetailComponent {
         }
     }
 
-    togglePriorityFilter() {
-        this.isPriorityFilterOpen = !this.isPriorityFilterOpen;
-    }
-    selectPriority(value: '高' | '中' | '低' | '未設定' | null) {
-        this.priorityFilter = value;
-        this.isPriorityFilterOpen = false;
-    }
-    clearPriorityFilter() {
-        this.priorityFilter = null;
-    }
-
-    toggleProgressFilter() {
-        this.isProgressFilterOpen = !this.isProgressFilterOpen;
-    }
-    selectProgress(
-        value: '未着手' | '進行中' | '保留' | '完了' | null,
-    ) {
-        this.progressFilter = value;
-        this.isProgressFilterOpen = false;
-    }
-    clearProgressFilter() {
-        this.progressFilter = null;
-    }
-
-    toggleDueDateFilter() {
-        this.isDueDateFilterOpen = !this.isDueDateFilterOpen;
-    }
-    selectDueDate(value: '今日' | '明日' | '1週間' | '未設定' | null) {
-        this.dueDateFilter = value;
-        this.isDueDateFilterOpen = false;
-    }
-    clearDueDateFilter() {
-        this.dueDateFilter = null;
-    }
-
     onRowCheckboxChange(taskId: string, checked: boolean) {
+        const task = this.tasks().find((t) => t.id === taskId);
+        if (!task || !this.isTaskCreatorTask(task)) return;
         if (checked) {
             if (!this.selectedTaskIds.includes(taskId)) {
                 this.selectedTaskIds = [...this.selectedTaskIds, taskId];
@@ -388,16 +282,16 @@ export class ProjectDetailComponent {
         }
     }
 
-    isAllDisplayedNotDoneSelected(): boolean {
-        const rows = this.displayTasks('notDone');
+    isAllDisplayedSelected(): boolean {
+        const rows = this.deletableDisplayedTasks(null);
         return (
             rows.length > 0 &&
             rows.every((t) => this.selectedTaskIds.includes(t.id))
         );
     }
 
-    onToggleSelectAllNotDone(checked: boolean) {
-        const ids = this.displayTasks('notDone').map((t) => t.id);
+    onToggleSelectAll(checked: boolean) {
+        const ids = this.deletableDisplayedTasks(null).map((t) => t.id);
         if (checked) {
             this.selectedTaskIds = [...new Set([...this.selectedTaskIds, ...ids])];
         } else {
@@ -410,13 +304,25 @@ export class ProjectDetailComponent {
 
     async deleteSelectedTask() {
         if (this.selectedTaskIds.length === 0) return;
-        const ids = [...this.selectedTaskIds];
+        const uid = this.authStateService.uid;
+        const allIds = [...this.selectedTaskIds];
+        const allowed = allIds.filter((id) => {
+            const t = this.tasks().find((x) => x.id === id);
+            return t && isTaskCreator(t, uid);
+        });
+        if (allowed.length === 0) {
+            window.alert('選択した課題のうち、削除できるのは作成した課題のみです。');
+            return;
+        }
+        if (allowed.length < allIds.length) {
+            window.alert('作成者のみ削除できるため、該当する課題のみ削除します。');
+        }
         try {
-            for (const taskId of ids) {
+            for (const taskId of allowed) {
                 await deleteChildrenTask(taskId);
             }
             this.tasks.update((current) =>
-                current.filter((t) => !ids.includes(t.id)),
+                current.filter((t) => !allowed.includes(t.id)),
             );
             this.selectedTaskIds = [];
         } catch (error) {
@@ -438,21 +344,46 @@ export class ProjectDetailComponent {
         return '';
     }
 
-    // カレンダー
+    progressPillClass(status: string): string {
+        switch (status) {
+            case '未着手':
+                return 'task-pill task-pill--todo';
+            case '進行中':
+                return 'task-pill task-pill--progress';
+            case '保留':
+                return 'task-pill task-pill--hold';
+            case '完了':
+                return 'task-pill task-pill--done';
+            default:
+                return 'task-pill';
+        }
+    }
+
+    priorityPillClass(priority: string | null): string {
+        if (priority === '高') return 'task-pill task-pill--pri-high';
+        if (priority === '中') return 'task-pill task-pill--pri-medium';
+        if (priority === '低') return 'task-pill task-pill--pri-low';
+        return 'task-pill task-pill--pri-none';
+    }
+
+    tagPillClass(color: string): string {
+        return `task-pill task-pill--tag-${color}`;
+    }
+
     getWeekDates(baseDate: Date): Date[] {
         const date = new Date(baseDate);
         const day = date.getDay();
-  
-        date.setDate(date.getDate() -day);
-  
+
+        date.setDate(date.getDate() - day);
+
         const dates: Date[] = [];
-  
-        for (let i=0; i<7; i++) {
+
+        for (let i = 0; i < 7; i++) {
             const d = new Date(date);
             d.setDate(date.getDate() + i);
             dates.push(d);
         }
-  
+
         return dates;
     }
     getDayName(date: Date): string {
@@ -462,27 +393,26 @@ export class ProjectDetailComponent {
     prevWeek() {
         const newDate = new Date(this.currentDate);
         newDate.setDate(newDate.getDate() - 7);
-  
+
         this.currentDate = newDate;
         this.weekDates = this.getWeekDates(this.currentDate);
-    }  nextWeek() {
+    }
+    nextWeek() {
         const newDate = new Date(this.currentDate);
         newDate.setDate(newDate.getDate() + 7);
-  
+
         this.currentDate = newDate;
         this.weekDates = this.getWeekDates(this.currentDate);
     }
-    // 今日の日付に移動
     today() {
         const newDate = new Date();
-        
+
         this.currentDate = newDate;
         this.weekDates = this.getWeekDates(this.currentDate);
     }
-    // 今日の日付かどうかの判定
     isToday(date: Date): boolean {
         const today = new Date();
-  
+
         return (
             date.getFullYear() === today.getFullYear() &&
             date.getMonth() === today.getMonth() &&
@@ -493,83 +423,91 @@ export class ProjectDetailComponent {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
-  
+
         return `${year}-${month}-${day}`;
     }
     getWeekTasks() {
-      if (this.weekDates.length === 0) return [];
+        if (this.weekDates.length === 0) return [];
 
-      const weekStart = this.formatDate(this.weekDates[0]);
-      const weekEnd = this.formatDate(this.weekDates[6]);
+        const weekStart = this.formatDate(this.weekDates[0]);
+        const weekEnd = this.formatDate(this.weekDates[6]);
 
-      return this.tasks().filter(task => {
-        if(!task.startDate || !task.dueDate) return false;
-        return task.startDate <= weekEnd && task.dueDate >= weekStart;
-      });
+        return this.tasks().filter((task) => {
+            if (!task.startDate || !task.dueDate) return false;
+            return task.startDate <= weekEnd && task.dueDate >= weekStart;
+        });
     }
 
-    /** 週内の未完了タスク（tasks.component の getCalendarWeekTasks に相当） */
     getCalendarWeekTasks(): Task[] {
-      return this.getWeekTasks().filter(t => t.status !== '完了');
+        const displayedIds = new Set(
+            this.displayTasks('notDone').map((t) => t.id),
+        );
+        return this.getWeekTasks().filter((t) => displayedIds.has(t.id));
     }
-  
+
     getTaskStartIndex(task: Task): number {
-      if(!task.startDate) return 0;
-      const weekStart = this.formatDate(this.weekDates[0]);
-    
-      if (task.startDate <= weekStart) {
-        return 0;
-      }
-    
-      return this.weekDates.findIndex(date => this.formatDate(date) === task.startDate);
+        if (!task.startDate) return 0;
+        const weekStart = this.formatDate(this.weekDates[0]);
+
+        if (task.startDate <= weekStart) {
+            return 0;
+        }
+
+        return this.weekDates.findIndex(
+            (date) => this.formatDate(date) === task.startDate,
+        );
     }
     getTaskLeftPercent(task: Task): number {
-      const startIndex = this.getTaskStartIndex(task);
-      return (startIndex / 7) * 100;
+        const startIndex = this.getTaskStartIndex(task);
+        return (startIndex / 7) * 100;
     }
     getTaskEndIndex(task: Task): number {
-      if(!task.dueDate) return 0;
-      const weekEnd = this.formatDate(this.weekDates[6]);
-    
-      if (task.dueDate >= weekEnd) {
-        return 6;
-      }
-    
-      return this.weekDates.findIndex(date => this.formatDate(date) === task.dueDate);
+        if (!task.dueDate) return 0;
+        const weekEnd = this.formatDate(this.weekDates[6]);
+
+        if (task.dueDate >= weekEnd) {
+            return 6;
+        }
+
+        return this.weekDates.findIndex(
+            (date) => this.formatDate(date) === task.dueDate,
+        );
     }
     getTaskWidthPercent(task: Task): number {
-      const startIndex = this.getTaskStartIndex(task);
-      const endIndex = this.getTaskEndIndex(task);
-      const spanDays = endIndex - startIndex + 1;
-    
-      return (spanDays / 7) * 100;
+        const startIndex = this.getTaskStartIndex(task);
+        const endIndex = this.getTaskEndIndex(task);
+        const spanDays = endIndex - startIndex + 1;
+
+        return (spanDays / 7) * 100;
     }
     sortedWeekTasks() {
-      return [...this.getCalendarWeekTasks()].sort((a, b) => {
-        if (a.startDate && b.startDate && a.startDate !== b.startDate) {
-          return a.startDate.localeCompare(b.startDate);
-        }
-    
-        if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) {
-          return a.dueDate.localeCompare(b.dueDate);
-        }
-    
-        return a.id.localeCompare(b.id);
-      });
+        return [...this.getCalendarWeekTasks()].sort((a, b) => {
+            if (a.startDate && b.startDate && a.startDate !== b.startDate) {
+                return a.startDate.localeCompare(b.startDate);
+            }
+
+            if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) {
+                return a.dueDate.localeCompare(b.dueDate);
+            }
+
+            return a.id.localeCompare(b.id);
+        });
     }
     getTaskRow(task: { id: string }) {
-      return this.sortedWeekTasks().findIndex(t => t.id === task.id);
+        return this.sortedWeekTasks().findIndex((t) => t.id === task.id);
     }
     getTaskTop(task: { id: string }) {
-      const row = this.getTaskRow(task);
-      return row * this.calendarRowHeightPx;
+        const row = this.getTaskRow(task);
+        return row * this.calendarRowHeightPx;
     }
 
     getCalendarBoardMinHeight(): number {
         const rows = this.sortedWeekTasks().length;
         const taskBand = rows * this.calendarRowHeightPx + 24;
         const bodyFloor = 220;
-        return Math.max(320, this.calendarHeaderBandPx + Math.max(bodyFloor, taskBand));
+        return Math.max(
+            320,
+            this.calendarHeaderBandPx + Math.max(bodyFloor, taskBand),
+        );
     }
 }
-

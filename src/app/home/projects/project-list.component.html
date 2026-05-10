@@ -4,6 +4,13 @@
         <button type="button" class="add-task-btn" (click)="openProjectAddModal()">+ プロジェクトを作成</button>
     </header>
 
+    @if (queryActiveProjectsOnly()) {
+        <div class="project-active-banner" role="status">
+            <span class="project-active-banner-text">未完了の課題があるプロジェクトのみ表示しています。</span>
+            <button type="button" class="project-active-banner-clear" (click)="clearActiveProjectFilter()">すべて表示</button>
+        </div>
+    }
+
     <div class="tasks-tool-row project-list-toolbar">
         <input
             type="text"
@@ -15,17 +22,44 @@
             (input)="searchQuery.set($any($event.target).value)"
             (compositionend)="searchQuery.set($any($event.target).value)"
         />
-        @for(team of userTeams(); track team.id) {
-            <button type="button" class="project-list-team-btn">{{ team.name }}</button>
-        }
     </div>
 
     <div class="project-list-card">
-        <div class="project-list-header" role="row">
+        <div class="project-list-header" role="row" (click)="$event.stopPropagation()">
             <span class="project-col-name">名前</span>
             <span class="project-col-tasks">タスク数</span>
             <span class="project-col-members">メンバー</span>
-            <span class="project-col-team">チーム</span>
+            <div class="project-col-team filter-th" (click)="$event.stopPropagation()">
+                <button
+                    type="button"
+                    class="th-filter-btn"
+                    (click)="$event.stopPropagation(); toggleTeamFilterMenu()"
+                    [class.active]="isTeamFilterMenuOpen"
+                >
+                    チーム
+                    <span class="th-filter-btn-icon">▼</span>
+                </button>
+                @if (selectedTeamIds()?.length) {
+                    <button type="button" class="clear-filter-btn" (click)="$event.stopPropagation(); clearTeamFilter()">
+                        <span class="filter-text">{{ teamFilterChipLabel() }}</span>
+                        <span class="clear-filter-btn-icon">×</span>
+                    </button>
+                }
+                @if (isTeamFilterMenuOpen) {
+                    <div class="th-filter-menu" (click)="$event.stopPropagation()">
+                        <button type="button" (click)="clearTeamFilter()">すべて</button>
+                        @for (team of userTeams(); track team.id) {
+                            <button
+                                type="button"
+                                [class.team-filter-menu-item--selected]="selectedTeamIds()?.includes(team.id)"
+                                (click)="selectTeamFromMenu(team.id)"
+                            >
+                                {{ team.name }}
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
             <span class="project-col-updated">最終更新</span>
         </div>
 
@@ -155,6 +189,37 @@
         font-weight: 700;
         color: #1a1a1a;
     }
+    .project-active-banner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 14px;
+        margin: 0 0 12px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #cfe8d2;
+        background: #f3faf4;
+        font-size: 13px;
+        color: #1f3d24;
+    }
+    .project-active-banner-text {
+        flex: 1 1 200px;
+        line-height: 1.5;
+    }
+    .project-active-banner-clear {
+        flex: 0 0 auto;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid #8fbc93;
+        background: #fff;
+        color: #255c2b;
+    }
+    .project-active-banner-clear:hover {
+        background: #e8f5ea;
+    }
     .add-task-btn {
         padding: 8px 16px;
         background: #4ea356;
@@ -203,7 +268,6 @@
         overflow: hidden;
         box-sizing: border-box;
     }
-
     .project-list-header,
     .project-item {
         display: grid;
@@ -357,11 +421,80 @@
         color: #6b7280;
         line-height: 1.5;
     }
+    .filter-th {
+        position: relative;
+        z-index: 3;
+    }
+    .th-filter-btn {
+        border: none;
+        background: none;
+        cursor: pointer;
+        padding: 4px 8px;
+        font-size: 14px;
+        color: #666;
+        font: inherit;
+        border-radius: 4px;
+    }
+    .th-filter-btn:hover {
+        background-color: #bebebe;
+    }
+    .th-filter-btn.active {
+        background-color: #bebebe;
+    }
+    .th-filter-btn-icon {
+        font-size: 10px;
+    }
+    .filter-text {
+        font-size: 12px;
+    }
+    .clear-filter-btn {
+        cursor: pointer;
+        border: none;
+        background-color: #84a38e;
+        color: #fff;
+        border-radius: 4px;
+    }
+    .clear-filter-btn:hover {
+        background-color: #2a5327;
+    }
+    .clear-filter-btn-icon {
+        font-size: 16px;
+    }
+    .th-filter-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 100;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 6px;
+        min-width: 140px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    }
+    .th-filter-menu button {
+        display: block;
+        width: 100%;
+        border: none;
+        background: transparent;
+        text-align: left;
+        padding: 6px 8px;
+        cursor: pointer;
+        border-radius: 4px;
+        font: inherit;
+        font-size: 14px;
+        color: #333;
+    }
+    .th-filter-menu button:hover {
+        background-color: #f0f0f0;
+    }
+    .th-filter-menu button.team-filter-menu-item--selected {
+        background: #e8f5e9;
+        font-weight: 600;
+        color: #1b5e20;
+    }
 
     @media (max-width: 720px) {
-        .project-list-header {
-            display: none;
-        }
         .project-item {
             grid-template-columns: 1fr;
             row-gap: 10px;

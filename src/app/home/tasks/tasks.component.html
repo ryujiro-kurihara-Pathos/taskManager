@@ -1,7 +1,18 @@
 <div class="tasks-container">
   <header class="tasks-header">
-    <p class="tasks-header-title">タスク</p>
+    <div class="tasks-header-lead">
+      <p class="tasks-header-title">マイタスク</p>
+      <p class="tasks-header-desc">個人スコープの課題を管理します</p>
+    </div>
   </header>
+  @if (profileViewBannerLabel(); as hint) {
+    <div class="profile-view-banner" role="status">
+      <span class="profile-view-banner-text">{{ hint }}</span>
+      <button type="button" class="profile-view-banner-clear" (click)="clearProfileListView()">
+        すべて表示
+      </button>
+    </div>
+  }
   <nav class="display-switch-container" aria-label="表示形式">
     <button
       class="display-switch-btn"
@@ -29,17 +40,18 @@
     </button>
   </nav>
   <div class="tasks-tool-row" (click)="$event.stopPropagation()">
-  <button class="add-task-btn" type="button" (click)="openTaskModal('task-add', null)">+ タスクを追加</button>
+    <button class="add-task-btn" type="button" (click)="openTaskModal('task-add', null)">+ タスクを追加</button>
     <input
       class="task-search-input"
-      type="text"
-      placeholder="タスクを検索"
+      type="search"
+      placeholder="タイトル・メモで検索"
       autocomplete="off"
+      aria-label="タスクを検索"
       [value]="tasksService.searchQuery()"
       (input)="tasksService.searchQuery.set($any($event.target).value)"
       (compositionend)="tasksService.searchQuery.set($any($event.target).value)"
     />
-  <div class="menu-wrapper" (click)="$event.stopPropagation()">
+    <div class="menu-wrapper" (click)="$event.stopPropagation()">
     @if (tasksService.displayFormat === 'list') {
       <button class="toolbar-btn" type="button" 
       [class.active]="isSortMenuOpen"
@@ -56,33 +68,41 @@
         <button class="menu-item" (click)="selectSort('updatedAt')">最終変更日</button>
       </div>
     }
-  </div>
+    </div>
   </div>
   @if (tasksService.displayFormat === 'list') {
     <!-- リスト -->
     <div class="list">
-      @if (selectedTaskIds.length > 0) {
-        <div class="task-bulk-bar">
+      <div class="task-bulk-bar">
+        <div class="task-bulk-meta">
           <span class="task-bulk-count">{{ selectedTaskIds.length }}件選択中</span>
-          <button class="task-bulk-delete-btn" type="button" (click)="deleteSelectedTask()">削除</button>
+          <span class="task-bulk-hint">削除できるのは作成した課題のみです</span>
         </div>
-      }
+        <button class="task-bulk-delete-btn" type="button" (click)="deleteSelectedTask()">選択を削除</button>
+      </div>
+      @if (showMyTasksNotDoneSection()) {
       <div class="task-table-wrapper">
         <table class="task-table">
           <thead class="task-table-head">
             <tr>
-              <th class="task-table-column-checkbox" scope="col" title="一覧の全選択">
+              <th class="task-table-column-checkbox" scope="col" title="未完了一覧の全選択">
                 <input
                   type="checkbox"
                   class="task-table-head-checkbox"
-                  [checked]="isAllDisplayedNotDoneSelected()"
-                  (change)="onToggleSelectAllNotDone($any($event.target).checked)"
+                  [disabled]="deletableDisplayedTasks('notDone').length === 0"
+                  [checked]="isAllDisplayedSelected()"
+                  (change)="onToggleSelectAll($any($event.target).checked)"
                 />
               </th>
               <th class="task-table-column-title" scope="col">タスク名</th>
               <th class="filter-th task-table-column-due-date">
-                <button class="th-filter-btn" (click)="$event.stopPropagation(); tasksService.toggleDueDateFilter()">
+                <button class="th-filter-btn" 
+                (click)="$event.stopPropagation(); tasksService.toggleDueDateFilter()"
+                [class.active]="tasksService.isDueDateFilterOpen">
                   期日
+                  <span class="th-filter-btn-icon">
+                    ▼
+                  </span>
                 </button>
                 @if (tasksService.dueDateFilter) {
                   <button class="clear-filter-btn" (click)="$event.stopPropagation(); tasksService.clearDueDateFilter()">
@@ -101,8 +121,13 @@
                 }
               </th>
               <th class="filter-th task-table-column-status">
-                <button class="th-filter-btn" (click)="$event.stopPropagation(); tasksService.toggleProgressFilter()">
+                <button class="th-filter-btn" 
+                (click)="$event.stopPropagation(); tasksService.toggleProgressFilter()"
+                [class.active]="tasksService.isProgressFilterOpen">
                   進捗
+                  <span class="th-filter-btn-icon">
+                    ▼
+                  </span>
                 </button>
                 @if (tasksService.progressFilter) {
                   <button class="clear-filter-btn" (click)="$event.stopPropagation(); tasksService.clearProgressFilter()">
@@ -121,8 +146,12 @@
                 }
               </th>
               <th class="filter-th task-table-column-priority">
-                <button class="th-filter-btn" (click)="$event.stopPropagation(); tasksService.togglePriorityFilter()">
-                  優先度
+                <button class="th-filter-btn" 
+                (click)="$event.stopPropagation(); tasksService.togglePriorityFilter()"
+                [class.active]="tasksService.isPriorityFilterOpen">
+                  優先度 <span class="th-filter-btn-icon">
+                    ▼
+                  </span>
                 </button>
                   @if (tasksService.priorityFilter) {
                     <button class="clear-filter-btn" (click)="$event.stopPropagation(); tasksService.clearPriorityFilter()">
@@ -141,14 +170,25 @@
                 }
               </th>
               <th class="filter-th task-table-column-tags">
-                <button class="th-filter-btn" (click)="$event.stopPropagation(); tasksService.toggleTagsFilter()">
+                <button class="th-filter-btn" 
+                (click)="$event.stopPropagation(); tasksService.toggleTagsFilter()"
+                [class.active]="tasksService.isTagsFilterOpen">
                   タグ
+                  <span class="th-filter-btn-icon">
+                    ▼
+                  </span>
                 </button>
+                @if (tasksService.tagFilter) {
+                  <button class="clear-filter-btn" (click)="$event.stopPropagation(); tasksService.clearTagsFilter()">
+                    <span class="filter-text">{{ tasksService.tagFilter?.name }}</span>
+                    <span class="clear-filter-btn-icon">×</span>
+                  </button>
+                }
                 @if (tasksService.isTagsFilterOpen) {
-                  <div class="th-filter-menu" (click)="$event.stopPropagation(); tasksService.clearTagsFilter()">
+                  <div class="th-filter-menu" (click)="$event.stopPropagation();">
                     <button type="button" (click)="tasksService.selectTags(null)">すべて</button>
-                    @for (tag of tasksService.tags; track tag.id) {
-                      <button type="button" (click)="tasksService.selectTags(tag.id)">{{ tag.name }}</button>
+                    @for (tag of tasksService.allTaskTags; track tag.id) {
+                      <button type="button" (click)="tasksService.selectTags(tag)">{{ tag.name }}</button>
                     }
                   </div>
                 }
@@ -161,6 +201,7 @@
                 <td class="task-table-cell-check" (click)="$event.stopPropagation()">
                   <input
                     type="checkbox"
+                    [disabled]="!isTaskCreatorTask(task)"
                     [checked]="selectedTaskIds.includes(task.id)"
                     (change)="onRowCheckboxChange(task.id, $any($event.target).checked)"
                   />
@@ -173,10 +214,11 @@
                   <span class="task-pill" [ngClass]="progressPillClass(task.status)">{{ task.status }}</span>
                 </td>
                 <td class="task-table-cell-priority">
+                  <span class="task-pill" [ngClass]="priorityPillClass(task.priority)">{{ task.priority ?? '未設定' }}</span>
                 </td>
                 <td>
                   @for (tag of task.tags ?? []; track tag.id) {
-                    <span class="task-table-tag" [style.background-color]="tag.color">{{ tag.name }}</span>
+                    <span class="task-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
                   }
                 </td>
               </tr>
@@ -184,6 +226,8 @@
           </tbody>
         </table>
       </div>
+      }
+      @if (showMyTasksDoneSection()) {
       <div class="done-task-container">
         <h3>完了したタスク</h3>
         @for (task of displayTasks('done'); track task.id) {
@@ -191,9 +235,19 @@
             <table class="task-table">
               <tbody>
                 <tr (click)="openTaskModal('task-edit', task)">
+                  <td class="task-table-cell-check" (click)="$event.stopPropagation()">
+                    <input
+                      type="checkbox"
+                      [disabled]="!isTaskCreatorTask(task)"
+                      [checked]="selectedTaskIds.includes(task.id)"
+                      (change)="onRowCheckboxChange(task.id, $any($event.target).checked)"
+                    />
+                  </td>
                   <td class="task-table-column-title">{{ task.title }}</td>
-                  <td class="task-table-column-due-date">
-                    <span class="task-due-range" [ngClass]="getDueDateStatus(task.dueDate, task.status)">{{ task.dueDate }}</span>
+                  <td class="task-table-column-tags">
+                    @for (tag of task.tags; track tag.id) {
+                      <span class="task-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                    }
                   </td>
                 </tr>
               </tbody>
@@ -201,6 +255,7 @@
           </div>
         }
       </div>
+      }
     </div>
   } @else if (tasksService.displayFormat === 'board') {
     <!-- ボード -->
@@ -216,14 +271,21 @@
         >
           <p class="board-column-title">未着手</p>
           @for (task of tasksService.filteredTodoTasks(); track task.id) {
-            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+            <div class="board-card" cdkDrag [cdkDragDisabled]="!isTaskCreatorTask(task)" (click)="openTaskModal('task-edit', task)">
               <p class="board-card-title">{{ task.title }}</p>
-              <p class="board-card-due-date">{{ task.dueDate }}</p>
-              <p class="board-card-tags">
-                @for (tag of task.tags; track tag.id) {
-                  <span class="board-card-tag">{{ tag.name }}</span>
+              <div class="board-card-meta">
+                <span
+                  class="task-due-range board-card-due"
+                  [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                >{{ boardDateRangeLabel(task) }}</span>
+                @if (task.tags?.length) {
+                  <div class="board-card-tag-row" aria-label="タグ">
+                    @for (tag of task.tags ?? []; track tag.id) {
+                      <span class="task-pill board-card-tag-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                    }
+                  </div>
                 }
-              </p>
+              </div>
             </div>
           }
         </div>
@@ -237,14 +299,21 @@
         >
           <p class="board-column-title">進行中</p>
           @for (task of tasksService.filteredInProgressTasks(); track task.id) {
-            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+            <div class="board-card" cdkDrag [cdkDragDisabled]="!isTaskCreatorTask(task)" (click)="openTaskModal('task-edit', task)">
               <p class="board-card-title">{{ task.title }}</p>
-              <p class="board-card-due-date">{{ task.dueDate }}</p>
-              <p class="board-card-tags">
-                @for (tag of task.tags; track tag.id) {
-                  <span class="board-card-tag">{{ tag.name }}</span>
+              <div class="board-card-meta">
+                <span
+                  class="task-due-range board-card-due"
+                  [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                >{{ boardDateRangeLabel(task) }}</span>
+                @if (task.tags?.length) {
+                  <div class="board-card-tag-row" aria-label="タグ">
+                    @for (tag of task.tags ?? []; track tag.id) {
+                      <span class="task-pill board-card-tag-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                    }
+                  </div>
                 }
-              </p>
+              </div>
             </div>
           }
         </div>
@@ -258,14 +327,21 @@
         >
           <p class="board-column-title">保留</p>
           @for (task of tasksService.filteredOnHoldTasks(); track task.id) {
-            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+            <div class="board-card" cdkDrag [cdkDragDisabled]="!isTaskCreatorTask(task)" (click)="openTaskModal('task-edit', task)">
               <p class="board-card-title">{{ task.title }}</p>
-              <p class="board-card-due-date">{{ task.dueDate }}</p>
-              <p class="board-card-tags">
-                @for (tag of task.tags; track tag.id) {
-                  <span class="board-card-tag">{{ tag.name }}</span>
+              <div class="board-card-meta">
+                <span
+                  class="task-due-range board-card-due"
+                  [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                >{{ boardDateRangeLabel(task) }}</span>
+                @if (task.tags?.length) {
+                  <div class="board-card-tag-row" aria-label="タグ">
+                    @for (tag of task.tags ?? []; track tag.id) {
+                      <span class="task-pill board-card-tag-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                    }
+                  </div>
                 }
-              </p>
+              </div>
             </div>
           }
         </div>
@@ -279,14 +355,21 @@
         >
           <p class="board-column-title">完了</p>
           @for (task of tasksService.filteredDoneTasks(); track task.id) {
-            <div class="board-card" cdkDrag (click)="openTaskModal('task-edit', task)">
+            <div class="board-card" cdkDrag [cdkDragDisabled]="!isTaskCreatorTask(task)" (click)="openTaskModal('task-edit', task)">
               <p class="board-card-title">{{ task.title }}</p>
-              <p class="board-card-due-date">{{ task.dueDate }}</p>
-              <p class="board-card-tags">
-                @for (tag of task.tags; track tag.id) {
-                  <span class="board-card-tag">{{ tag.name }}</span>
+              <div class="board-card-meta">
+                <span
+                  class="task-due-range board-card-due"
+                  [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                >{{ boardDateRangeLabel(task) }}</span>
+                @if (task.tags?.length) {
+                  <div class="board-card-tag-row" aria-label="タグ">
+                    @for (tag of task.tags ?? []; track tag.id) {
+                      <span class="task-pill board-card-tag-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                    }
+                  </div>
                 }
-              </p>
+              </div>
             </div>
           }
         </div>
@@ -350,31 +433,99 @@
     box-sizing: border-box;
   }
   .tasks-header {
+    padding: 20px 0 16px;
+    border-bottom: 1px solid #e8eaed;
+    margin-bottom: 4px;
+  }
+  .tasks-header-lead {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 0;
-    border-bottom: 1px solid #e0e0e0;
+    flex-direction: column;
+    gap: 4px;
   }
   .tasks-header-title {
     margin: 0;
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #111827;
+  }
+  .tasks-header-desc {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+    line-height: 1.45;
+  }
+
+  .profile-view-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    margin: 0 0 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid #cfe8d2;
+    background: #f3faf4;
+    font-size: 13px;
+    color: #1f3d24;
+  }
+  .profile-view-banner-text {
+    flex: 1 1 200px;
+    line-height: 1.5;
+  }
+  .profile-view-banner-clear {
+    flex: 0 0 auto;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #8fbc93;
+    background: #fff;
+    color: #255c2b;
+  }
+  .profile-view-banner-clear:hover {
+    background: #e8f5ea;
   }
 
   .display-switch-container {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 16px 0;
+    margin: 14px 0 12px;
     box-sizing: border-box;
   }
   .tasks-tool-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
+    gap: 10px 12px;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: #f9fafb;
+    border: 1px solid #eceef1;
+    border-radius: 10px;
+    box-sizing: border-box;
+  }
+  .task-search-input {
+    flex: 1 1 200px;
+    min-width: 160px;
+    max-width: 420px;
+    padding: 9px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    background: #fff;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .task-search-input:focus {
+    border-color: #4ea356;
+    box-shadow: 0 0 0 3px rgba(78, 163, 86, 0.18);
+  }
+  .task-search-input::placeholder {
+    color: #9ca3af;
   }
   .add-task-btn {
     padding: 8px 16px;
@@ -525,7 +676,13 @@
     border-radius: 4px;
   }
   .th-filter-btn:hover {
-    background-color: #f0f0f0;
+    background-color: #bebebe;
+  }
+  .th-filter-btn.active {
+    background-color: #bebebe;
+  }
+  .th-filter-btn-icon {
+    font-size: 10px;
   }
   .filter-text {
     font-size: 12px;
@@ -575,9 +732,9 @@
     max-width: 40%;
     overflow: hidden;
   }
-  .task-table-column-due-date {
+  .task-table-column-tags {
     min-width: 180px;
-    width: 22%;
+    width: min(22%, 200px);
   }
   .task-table-column-status {
     width: 100px;
@@ -585,15 +742,15 @@
   .task-table-column-priority {
     width: 100px;
   }
-  .task-table-column-tags {
-    width: 200px;
-  }
-  .task-table-column-checkbox {
+  /* チェック列: 常時表示 */
+  .task-table thead th.task-table-column-checkbox {
     width: 44px;
+    max-width: 44px;
+    padding: 10px 8px;
+    overflow: visible;
     text-align: center;
     vertical-align: middle;
-    padding-left: 8px;
-    padding-right: 8px;
+    box-sizing: border-box;
   }
   .task-table-head-checkbox {
     width: 16px;
@@ -601,11 +758,14 @@
     cursor: pointer;
     vertical-align: middle;
   }
-  .task-table-cell-check {
+  .task-table tbody td.task-table-cell-check {
     width: 44px;
+    max-width: 44px;
+    padding: 10px 8px;
+    overflow: visible;
     text-align: center;
     vertical-align: middle;
-    padding: 10px 8px;
+    box-sizing: border-box;
   }
   .task-table-cell-check input {
     width: 16px;
@@ -620,31 +780,50 @@
   }
   .task-bulk-bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
-    padding: 8px 12px;
-    background: #f4f6f8;
+    gap: 10px 14px;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    background: linear-gradient(180deg, #fafbfc 0%, #f3f5f7 100%);
     border: 1px solid #e0e4e8;
-    border-radius: 8px;
+    border-radius: 10px;
     box-sizing: border-box;
+  }
+  .task-bulk-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
   }
   .task-bulk-count {
     font-size: 13px;
-    color: #444;
+    font-weight: 600;
+    color: #374151;
+  }
+  .task-bulk-hint {
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.4;
   }
   .task-bulk-delete-btn {
-    padding: 6px 14px;
+    flex-shrink: 0;
+    padding: 8px 16px;
     font-size: 13px;
+    font-weight: 600;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     background: #8b2942;
     color: #fff;
     cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
   }
   .task-bulk-delete-btn:hover {
     background: #6d1f33;
+  }
+  .task-bulk-delete-btn:active {
+    transform: scale(0.98);
   }
   .task-table tbody tr {
     cursor: pointer;
@@ -664,7 +843,8 @@
   }
   .task-table-cell-due,
   .task-table-cell-progress,
-  .task-table-cell-priority {
+  .task-table-cell-priority,
+  .task-table-cell-tags {
     white-space: nowrap;
   }
   .task-due-range {
@@ -739,9 +919,55 @@
     border-color: #e0e0e0;
     font-weight: 500;
   }
-  .task-table-tag {
-    font-size: 12px;
-    padding: 2px 6px;
+  .task-pill--tag-red {
+    background: #ffebee;
+    color: #c62828;
+    border-color: #ffcdd2;
+  }
+  .task-pill--tag-orange {
+    background: #fff3e0;
+    color: #e65100;
+    border-color: #ffe0b2;
+  }
+  .task-pill--tag-yellow {
+    background: #fffde7;
+    color: #f57f17;
+    border-color: #fff9c4;
+  }
+  .task-pill--tag-green {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border-color: #c8e6c9;
+  }
+  .task-pill--tag-teal {
+    background: #e0f2f1;
+    color: #00695c;
+    border-color: #b2dfdb;
+  }
+  .task-pill--tag-blue {
+    background: #e3f2fd;
+    color: #0d47a1;
+    border-color: #bbdefb;
+  }
+  .task-pill--tag-indigo {
+    background: #e8eaf6;
+    color: #283593;
+    border-color: #c5cae9;
+  }
+  .task-pill--tag-purple {
+    background: #f3e5f5;
+    color: #6a1b9a;
+    border-color: #e1bee7;
+  }
+  .task-pill--tag-pink {
+    background: #fce4ec;
+    color: #ad1457;
+    border-color: #f8bbd0;
+  }
+  .task-pill--tag-gray {
+    background: #eceff1;
+    color: #455a64;
+    border-color: #cfd8dc;
   }
 
   /* ボード */
@@ -827,6 +1053,46 @@
     color: #1a1a1a;
     line-clamp: 4;
     overflow: hidden;
+  }
+  .board-card-meta {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #eef0f3;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .board-card-due {
+    align-self: flex-start;
+    font-size: 12px;
+    line-height: 1.35;
+    padding: 5px 10px;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .board-card-due.task-due-range:not(.near):not(.overdue) {
+    color: #4b5563;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+  }
+  .board-card-tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+  }
+  .board-card-tag-pill {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-width: 1px;
+    border-style: solid;
   }
 
   /* カレンダー（シンプル） */

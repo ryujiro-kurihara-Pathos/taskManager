@@ -106,18 +106,64 @@
               />
             </div>
             <div class="edit-task-item edit-task-tags">
-              <p class="edit-label">タグ</p>
+              <div class="edit-label-wrapper">
+                <p class="edit-label">タグ</p>
+                <button type="button" class="edit-label-edit-btn" (click)="toggleTagDefinitionsEdit()">
+                  {{ tagDefinitionsEditMode ? '閉じる' : '編集' }}
+                </button>
+              </div>
               <div class="task-add-tag-column">
                 <div class="task-tag-list">
-                  @for (tag of taskTags; track tag.id) {
-                    <label class="task-tag-option">
-                      <input
-                        type="checkbox"
-                        [checked]="addingTask.tagIds.includes(tag.id)"
-                        (change)="toggleAddingTaskTag(tag.id, $any($event.target).checked)"
-                      />
-                      <span>{{ tag.name }}</span>
-                    </label>
+                  @for (tag of tasksService.allTaskTags; track tag.id) {
+                    <div
+                      class="task-tag-option"
+                      [class.task-tag-option--edit-def]="tagDefinitionsEditMode"
+                    >
+                      <label class="task-tag-check-wrap">
+                        <input
+                          class="task-tag-checkbox"
+                          type="checkbox"
+                          [checked]="(addingTask.tagIds ?? []).includes(tag.id)"
+                          (change)="toggleAddingTaskTag(tag.id, $any($event.target).checked)"
+                        />
+                        <span
+                          class="task-tag-color"
+                          [style.background-color]="tag.color"
+                          [style.border]="(addingTask.tagIds ?? []).includes(tag.id) ? 'solid 2px black' : 'solid 2px rgba(0, 0, 0, 0.12)'"
+                          [class.checked]="(addingTask.tagIds ?? []).includes(tag.id)"
+                        ></span>
+                        @if (!tagDefinitionsEditMode) {
+                          <span
+                            class="task-tag-name"
+                            [class.checked]="(addingTask.tagIds ?? []).includes(tag.id)"
+                            >{{ tag.name }}</span>
+                        }
+                      </label>
+                      @if (tagDefinitionsEditMode) {
+                        <input
+                          type="text"
+                          class="task-tag-name-input"
+                          [(ngModel)]="tag.name"
+                          placeholder="タグ名"
+                        />
+                        <div class="tag-color-palette tag-color-palette--compact" aria-label="タグ色">
+                          @for (c of tagColorPresets; track c) {
+                            <button
+                              type="button"
+                              class="tag-color-swatch tag-color-swatch--compact"
+                              [class.active]="tag.color === c"
+                              [style.background-color]="c"
+                              (click)="setTagDefinitionColor(tag, c)"
+                              [attr.aria-label]="'色 ' + c"
+                              [attr.title]="c"
+                            ></button>
+                          }
+                        </div>
+                        <button type="button" class="task-tag-save-def-btn" (click)="saveTagDefinition(tag)">
+                          保存
+                        </button>
+                      }
+                    </div>
                   }
                 </div>
                 <div class="task-add-tag-new">
@@ -151,6 +197,9 @@
             <button class="edit-task-close-btn" type="button" (click)="closeModal()">×</button>
           </div>
           <div class="modal-body edit-task-body">
+            @if (isTaskModalReadOnly()) {
+              <p class="edit-task-readonly-notice">この課題は閲覧のみです（作成者のみ編集・削除できます）。</p>
+            }
             <div class="edit-task-hierarchy-container">
               @for (task of modalState.data.hierarchyTask; track task.id) {
                 <button class="edit-task-hierarchy-btn" type="button" (click)="changeEditingTask(task)">
@@ -161,23 +210,29 @@
             <input type="text"
             class="edit-task-name-input"
             [(ngModel)]="tasksService.editingTask.title"
+            [disabled]="isTaskModalReadOnly()"
             >
             <div class="edit-task-item">
               <p class="edit-label">担当者</p>
-              <p class="edit-task-assigned-user-name">{{ authState.userName }}</p>
-              <!-- <select name="assignedUid" id="assignedUid-select"
-              [(ngModel)]="tasksService.editingTask.assignedUid">
-                <option [ngValue]="null">未指定</option>
-                @for (user of tasksService.editingTask.assignableUsers; track user.id) {
-                  <option [ngValue]="user.id">{{ user.userName }}</option>
-                }
-              </select> -->
+              @if(!modalState.data.teamId && !modalState.data.projectId) {
+                <p class="edit-task-assigned-user-name">{{ authState.userName }}</p>
+              } @else {
+                <select name="assignedUid" id="assignedUid-select"
+                [(ngModel)]="tasksService.editingTask.assignedUid"
+                [disabled]="isTaskModalReadOnly()">
+                  <option [ngValue]="null">未指定</option>
+                  @for (user of tasksService.editingTask.assignableUsers; track user.id) {
+                    <option [ngValue]="user.id">{{ user.userName }}</option>
+                  }
+                </select>
+              }
             </div>
             <div class="edit-task-item">
               <p class="edit-label">開始日</p>
               <input type="date"
                class="edit-task-start-date-input"
                [(ngModel)]="tasksService.editingTask.startDate"
+               [disabled]="isTaskModalReadOnly()"
                >
             </div>
             <div class="edit-task-item">
@@ -185,12 +240,14 @@
               <input type="date"
               class="edit-task-due-date-input"
               [(ngModel)]="tasksService.editingTask.dueDate"
+              [disabled]="isTaskModalReadOnly()"
               >
             </div>
             <div class="edit-task-item">
               <p class="edit-label">ステータス</p>
               <select name="status" id="status-select"
               [(ngModel)]="tasksService.editingTask.status"
+              [disabled]="isTaskModalReadOnly()"
               >
                 <option value="未着手">未着手</option>
                 <option value="進行中">進行中</option>
@@ -202,6 +259,7 @@
               <p class="edit-label">優先度</p>
               <select name="priority" id="priority-select"
               [(ngModel)]="tasksService.editingTask.priority"
+              [disabled]="isTaskModalReadOnly()"
               >
                 <option value="">未入力</option>
                 <option value="高">高</option>
@@ -216,25 +274,78 @@
                 class="edit-task-memo-input"
                 [(ngModel)]="tasksService.editingTask.memo"
                 placeholder="メモを入力してください"
+                [disabled]="isTaskModalReadOnly()"
               >
             </div>
             <div class="edit-task-item edit-task-tags">
-              <p class="edit-label">タグ</p>
+              <div class="edit-label-wrapper">
+                <p class="edit-label">タグ</p>
+                <button type="button" class="edit-label-edit-btn" (click)="toggleTagDefinitionsEdit()" [disabled]="isTaskModalReadOnly()">
+                  {{ tagDefinitionsEditMode ? '閉じる' : '編集' }}
+                </button>
+              </div>
               <div class="task-add-tag-column">
                 <div class="task-tag-list">
-                  @for (tag of taskTags; track tag.id) {
-                    <label class="task-tag-option">
-                      <input
-                        type="checkbox"
-                        [checked]="(tasksService.editingTask.tagIds ?? []).includes(tag.id)"
-                        (change)="toggleEditingTaskTag(tag.id, $any($event.target).checked)"
-                      />
-                      <span>{{ tag.name }}</span>
-                    </label>
+                  @for (tag of tasksService.allTaskTags; track tag.id) {
+                    <div
+                      class="task-tag-option"
+                      [class.task-tag-option--edit-def]="tagDefinitionsEditMode"
+                    >
+                      <label class="task-tag-check-wrap">
+                        <input
+                          class="task-tag-checkbox"
+                          type="checkbox"
+                          [disabled]="isTaskModalReadOnly()"
+                          [checked]="(tasksService.editingTask.tagIds ?? []).includes(tag.id)"
+                          (change)="toggleEditingTaskTag(tag.id, $any($event.target).checked)"
+                        />
+                        <span
+                          class="task-tag-color"
+                          [style.background-color]="tag.color"
+                          [style.border]="(tasksService.editingTask.tagIds ?? []).includes(tag.id) ? 'solid 2px black' : 'solid 2px rgba(0, 0, 0, 0.12)'"
+                          [class.checked]="(tasksService.editingTask.tagIds ?? []).includes(tag.id)"
+                        ></span>
+                        @if (!tagDefinitionsEditMode) {
+                          <span
+                            class="task-tag-name"
+                            [class.checked]="(tasksService.editingTask.tagIds ?? []).includes(tag.id)"
+                            >{{ tag.name }}</span>
+                        }
+                      </label>
+                      @if (tagDefinitionsEditMode) {
+                        <input
+                          type="text"
+                          class="task-tag-name-input"
+                          [(ngModel)]="tag.name"
+                          placeholder="タグ名"
+                          [disabled]="isTaskModalReadOnly()"
+                        />
+                        <button type="button" class="task-tag-delete-def-btn" (click)="deleteTagDefinition(tag)" [disabled]="isTaskModalReadOnly()">
+                          削除
+                        </button>
+                        <div class="tag-color-palette tag-color-palette--compact" aria-label="タグ色">
+                          @for (c of tagColorPresets; track c) {
+                            <button
+                              type="button"
+                              class="tag-color-swatch tag-color-swatch--compact"
+                              [class.active]="tag.color === c"
+                              [style.background-color]="c"
+                              (click)="setTagDefinitionColor(tag, c)"
+                              [attr.aria-label]="'色 ' + c"
+                              [attr.title]="c"
+                              [disabled]="isTaskModalReadOnly()"
+                            ></button>
+                          }
+                        </div>
+                        <button type="button" class="task-tag-save-def-btn" (click)="saveTagDefinition(tag)" [disabled]="isTaskModalReadOnly()">
+                          保存
+                        </button>
+                      }
+                    </div>
                   }
                 </div>
                 <div class="task-add-tag-new">
-                  <input type="text" [(ngModel)]="newTagName" placeholder="新しいタグ名" class="task-add-tag-name-input" />
+                  <input type="text" [(ngModel)]="newTagName" placeholder="新しいタグ名" class="task-add-tag-name-input" [disabled]="isTaskModalReadOnly()" />
                   <div class="tag-color-palette" aria-label="タグ色を選択">
                     @for (c of tagColorPresets; track c) {
                       <button
@@ -245,16 +356,17 @@
                         (click)="selectNewTagColor(c)"
                         [attr.aria-label]="'色 ' + c"
                         [attr.title]="c"
+                        [disabled]="isTaskModalReadOnly()"
                       ></button>
                     }
                   </div>
-                  <button type="button" class="task-add-tag-create-btn" (click)="createTag()">作成</button>
+                  <button type="button" class="task-add-tag-create-btn" (click)="createTag()" [disabled]="isTaskModalReadOnly()">作成</button>
                 </div>
               </div>
             </div>
             <div class="edit-task-item edit-task-subtasks-container">
               <p class="edit-label">サブタスク</p>
-              <button class="edit-task-subtask-add-btn" type="button" (click)="addEmptySubTask(modalState.data.id)">+</button>
+              <button class="edit-task-subtask-add-btn" type="button" (click)="addEmptySubTask(modalState.data.id)" [disabled]="isTaskModalReadOnly()">+</button>
               <div class="edit-task-subtasks-value-container">
                 @if (addingSubTask !== null) {
                   <div class="edit-task-subtask-item" (click)="changeEditingTask(addingSubTask)">
@@ -264,39 +376,41 @@
                     class="edit-task-subtask-input"
                     [(ngModel)]="addingSubTask.title"
                     (blur)="addSubTask(addingSubTask)"
+                    [disabled]="isTaskModalReadOnly()"
                     />
                   </div>
                 }
                 @for (subTask of modalState.data.subTasks; track subTask.id) {
                   <div class="edit-task-subtask-item" (click)="changeEditingTask(subTask)">
                     <input
-                    type="text"
-                    class="edit-task-subtask-input"
-                    [(ngModel)]="subTask.title"
-                    (blur)="updateTitle(subTask)"
-                    />
+                      type="text"
+                      class="edit-task-subtask-input"
+                      [(ngModel)]="subTask.title"
+                      (blur)="updateTitle(subTask)"
+                      [disabled]="isTaskModalReadOnly()"
+                      />
                   </div>
                 }
               </div>
             </div>
             <div class="edit-task-item">
               <p class="edit-label">コメント</p>
-              <input type="text" [(ngModel)]="commentContent" placeholder="コメントを入力してください" />
-              <button class="edit-task-comment-add-btn" type="button" (click)="addComment(modalState.data.id)">コメント</button>
+              <input type="text" [(ngModel)]="commentContent" placeholder="コメントを入力してください" [disabled]="isTaskModalReadOnly()" />
+              <button class="edit-task-comment-add-btn" type="button" (click)="addComment(modalState.data.id)" [disabled]="isTaskModalReadOnly()">コメント</button>
               <div class="edit-task-comments-container">
                 @for (comment of modalState.data.comments; track comment.id) {
                   <p class="edit-task-comment-content">{{ comment.content }}</p>
                   <p class="edit-task-comment-time">{{ tasksService.displayTime(comment.createdAt, 'time') }}</p>
-                  <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)">
+                  <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)" [disabled]="isTaskModalReadOnly()">
                     削除
                   </button>
                 }
               </div>
             </div>
           </div>
-          <button class="edit-task-reset-btn" type="button" (click)="resetTask()">リセット</button>
-          <button class="edit-task-save-btn" type="button" (click)="onSaveTaskEdit(tasksService.editingTask)">保存</button>
-          <button class="edit-task-delete-btn" type="button" (click)="deleteTask(modalState.data.id)">削除</button>
+          <button class="edit-task-reset-btn" type="button" (click)="resetTask()" [disabled]="isTaskModalReadOnly()">リセット</button>
+          <button class="edit-task-save-btn" type="button" (click)="onSaveTaskEdit(tasksService.editingTask)" [disabled]="isTaskModalReadOnly()">保存</button>
+          <button class="edit-task-delete-btn" type="button" (click)="deleteTask(modalState.data.id)" [disabled]="!canDeleteRootModalTask()">削除</button>
         </div>
       </div>
     } @else if (modalState.type === 'project-edit') {
@@ -347,6 +461,53 @@
             <div class="project-edit-danger-actions">
               <button class="project-edit-leave-btn" type="button" (click)="leaveProjectFromEdit(modalState.data)">プロジェクトから退出</button>
               <button class="project-edit-delete-btn" type="button" (click)="deleteProject(modalState.data)">プロジェクトを削除</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    } @else if (modalState.type === 'team-edit') {
+      <div class="modal" (click)="closeModal()">
+        <div class="modal-form project-edit-modal-form" (click)="$event.stopPropagation()">
+          <div class="modal-top">
+            <p class="modal-title">チームを編集</p>
+            <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
+          </div>
+          <div class="modal-body project-edit-body">
+            <section class="project-edit-section">
+              <h3 class="project-edit-section-title">基本情報</h3>
+              <div class="project-edit-fields">
+                <label class="project-edit-label" for="team-edit-name">名前</label>
+                <input
+                  id="team-edit-name"
+                  type="text"
+                  [(ngModel)]="modalState.data.name"
+                  placeholder="チーム名を入力してください"
+                  class="project-edit-input"
+                />
+                <label class="project-edit-label" for="team-edit-desc">説明</label>
+                <textarea
+                  id="team-edit-desc"
+                  [(ngModel)]="modalState.data.description"
+                  placeholder="チームの説明を入力してください"
+                  class="project-edit-input project-edit-textarea"
+                  rows="3"
+                ></textarea>
+              </div>
+            </section>
+            <section class="project-edit-section">
+              <h3 class="project-edit-section-title">メンバー招待</h3>
+              <p class="project-edit-section-hint">招待したユーザーに通知が送信されます。</p>
+              <div class="modal-content-email-input-container project-edit-invite-row">
+                <input type="email" [(ngModel)]="inviteEmail" placeholder="メールアドレスを入力してください" />
+                <button class="project-invite-btn" type="button" (click)="invite('team', modalState.data.id, false)">招待</button>
+              </div>
+            </section>
+          </div>
+          <div class="modal-footer project-edit-footer">
+            <button class="project-edit-save-btn" type="button" (click)="saveTeamEdit(modalState.data)">保存</button>
+            <div class="project-edit-danger-actions">
+              <button class="project-edit-leave-btn" type="button" (click)="leaveTeamFromEdit(modalState.data)">チームから退出</button>
+              <button class="project-edit-delete-btn" type="button" (click)="deleteTeamFromEdit(modalState.data)">チームを削除</button>
             </div>
           </div>
         </div>
@@ -492,6 +653,9 @@
             <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
           </div>
           <div class="modal-body edit-task-body">
+            @if (isTaskModalReadOnly()) {
+              <p class="edit-task-readonly-notice">この課題は閲覧のみです（作成者のみ編集・削除できます）。</p>
+            }
             <div class="edit-task-hierarchy-wrapper">
               @for (task of modalState.data.hierarchyTask; track task.id) {
                 <button class="edit-task-hierarchy-btn" type="button" (click)="changeEditingTask(task)">
@@ -501,23 +665,27 @@
             </div>
             <input type="text"
             class="edit-task-name-input"
-            [(ngModel)]="tasksService.editingTask.title">
+            [(ngModel)]="tasksService.editingTask.title"
+            [disabled]="isTaskModalReadOnly()">
             <div class="edit-task-item edit-task-start-date">
               <p class="edit-label">開始日</p>
               <input type="date"
                class="edit-task-start-date-input"
-               [(ngModel)]="tasksService.editingTask.startDate">
+               [(ngModel)]="tasksService.editingTask.startDate"
+               [disabled]="isTaskModalReadOnly()">
             </div>
             <div class="edit-task-item edit-task-due-date">
               <p class="edit-label">期日</p>
               <input type="date"
               class="edit-task-due-date-input"
-              [(ngModel)]="tasksService.editingTask.dueDate">
+              [(ngModel)]="tasksService.editingTask.dueDate"
+              [disabled]="isTaskModalReadOnly()">
             </div>
             <div class="edit-task-item edit-task-status">
               <p class="edit-label">ステータス</p>
               <select name="status" id="status-select"
-              [(ngModel)]="tasksService.editingTask.status">
+              [(ngModel)]="tasksService.editingTask.status"
+              [disabled]="isTaskModalReadOnly()">
                 <option value="未着手">未着手</option>
                 <option value="進行中">進行中</option>
                 <option value="保留">保留</option>
@@ -528,6 +696,7 @@
               <p class="edit-label">優先度</p>
               <select name="priority" id="priority-select"
               [(ngModel)]="tasksService.editingTask.priority"
+              [disabled]="isTaskModalReadOnly()"
               >
                 <option value="">未入力</option>
                 <option value="高">高</option>
@@ -542,11 +711,12 @@
                 class="edit-task-memo-input"
                 [(ngModel)]="tasksService.editingTask.memo"
                 placeholder="メモを入力してください"
+                [disabled]="isTaskModalReadOnly()"
               >
             </div>
             <div class="edit-task-item edit-task-subtasks-container">
               <p class="edit-label">サブタスク</p>
-              <button class="edit-task-subtask-add-btn" type="button" (click)="addEmptySubTask(modalState.data.id)">+</button>
+              <button class="edit-task-subtask-add-btn" type="button" (click)="addEmptySubTask(modalState.data.id)" [disabled]="isTaskModalReadOnly()">+</button>
               <div class="edit-task-subtasks-value-container">
                 @if (addingSubTask !== null) {
                   <div class="edit-task-subtask-item" (click)="changeEditingTask(addingSubTask)">
@@ -556,6 +726,7 @@
                     class="edit-task-subtask-input"
                     [(ngModel)]="addingSubTask.title"
                     (blur)="addSubTask(addingSubTask)"
+                    [disabled]="isTaskModalReadOnly()"
                     />
                   </div>
                 }
@@ -566,6 +737,7 @@
                     class="edit-task-subtask-input"
                     [(ngModel)]="subTask.title"
                     (blur)="updateTitle(subTask)"
+                    [disabled]="isTaskModalReadOnly()"
                     />
                   </div>
                 }
@@ -573,20 +745,20 @@
             </div>
             <div class="edit-task-item">
               <p class="edit-label">コメント</p>
-              <input type="text" [(ngModel)]="commentContent" placeholder="コメントを入力してください" />
-              <button class="edit-task-comment-add-btn" type="button" (click)="addComment(modalState.data.id)">コメント</button>
+              <input type="text" [(ngModel)]="commentContent" placeholder="コメントを入力してください" [disabled]="isTaskModalReadOnly()" />
+              <button class="edit-task-comment-add-btn" type="button" (click)="addComment(modalState.data.id)" [disabled]="isTaskModalReadOnly()">コメント</button>
               <div class="edit-task-comments-container">
                 @for (comment of modalState.data.comments; track comment.id) {
                   <p class="edit-task-comment-content">{{ comment.content }}</p>
-                  <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)">
+                  <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)" [disabled]="isTaskModalReadOnly()">
                     削除
                   </button>
                 }
               </div>
             </div>
           </div>
-          <button class="edit-task-save-btn" type="button" (click)="onSaveTaskEdit(tasksService.editingTask)">保存</button>
-          <button class="edit-task-delete-btn" type="button" (click)="deleteTask(modalState.data.id)">削除</button>
+          <button class="edit-task-save-btn" type="button" (click)="onSaveTaskEdit(tasksService.editingTask)" [disabled]="isTaskModalReadOnly()">保存</button>
+          <button class="edit-task-delete-btn" type="button" (click)="deleteTask(modalState.data.id)" [disabled]="!canDeleteRootModalTask()">削除</button>
         </div>
       </div>
     } @else if (modalState.type === 'team-member-detail') {
@@ -1277,12 +1449,88 @@
     align-items: center;
     gap: 6px;
     font-size: 14px;
-    cursor: pointer;
+    cursor: default;
     user-select: none;
   }
-  .task-tag-option input {
-    margin: 0;
+  .task-tag-option--edit-def {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 8px;
+    column-gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    padding: 8px 0;
+    border-bottom: 1px solid #eef0f3;
+    box-sizing: border-box;
+  }
+  .task-tag-option--edit-def:last-child {
+    border-bottom: none;
+  }
+  .task-tag-check-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     cursor: pointer;
+    flex-shrink: 0;
+  }
+  .task-tag-name-input {
+    flex: 1;
+    min-width: 100px;
+    max-width: 200px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+    box-sizing: border-box;
+    background: #fff;
+    color: #222;
+  }
+  .task-tag-name-input:focus {
+    outline: none;
+    border-color: #1b5214;
+  }
+  .tag-color-palette--compact {
+    gap: 4px;
+  }
+  .tag-color-swatch--compact {
+    width: 18px;
+    height: 18px;
+  }
+  .task-tag-save-def-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+    border: none;
+    border-radius: 8px;
+    background: #1b5214;
+    color: #fff;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .task-tag-save-def-btn:hover {
+    background: #255c2b;
+  }
+  .task-tag-checkbox {
+    margin: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .task-tag-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+  }
+  .task-tag-color.checked {
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.12);
+  }
+  .task-tag-name {
+    color: #888;
+  }
+  .task-tag-name.checked {
+    color: #000;
+    text-shadow: 0 0 0.8px currentColor;
   }
   .task-add-tag-new {
     display: flex;
@@ -1333,7 +1581,7 @@
   }
   .edit-task-item select,
   .edit-task-item input[type='date'],
-  .edit-task-item input[type='text']:not(.edit-task-name-input):not(.edit-task-subtask-input) {
+  .edit-task-item input[type='text']:not(.edit-task-name-input):not(.edit-task-subtask-input):not(.task-tag-name-input) {
     flex: 1;
     min-width: 160px;
     border: 1px solid #e0e0e0;
@@ -1471,6 +1719,16 @@
   .edit-task-close-btn:hover {
     background: #eee;
     color: #111;
+  }
+  .edit-task-readonly-notice {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    background: #fff8e1;
+    border: 1px solid #e6c200;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #5c4a00;
+    line-height: 1.45;
   }
   .edit-task-modal .modal-body.edit-task-body {
     padding: 16px 18px 8px;

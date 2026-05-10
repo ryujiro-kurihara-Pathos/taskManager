@@ -1,16 +1,27 @@
 import { CommonModule } from '@angular/common';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { ActivatedRoute } from '@angular/router';
-import { Component, HostListener, inject, signal } from '@angular/core';
+import {
+    Component,
+    HostListener,
+    OnDestroy,
+    OnInit,
+    inject,
+    signal,
+} from '@angular/core';
+import { Subscription } from 'rxjs';
 import { ModalService } from '../../services/modal.service';
 import { TasksService } from '../../services/tasks.service';
+import { AuthStateService } from '../../services/auth-state.service';
 import { SortKey, Task, AddTaskInput } from '../../types/task';
 import { Team, TeamMember } from '../../types/team';
+import { isTaskCreator } from '../../utils/task-permissions';
 import {
     deleteChildrenTask,
     getTeamById,
     getTeamMembersByTeamId,
     getTasksByTeamId,
+    getUser,
     updateTask,
 } from '../../firestore';
 
@@ -20,11 +31,12 @@ import {
     standalone: true,
     imports: [CommonModule, DragDropModule],
 })
-export class TeamDetailComponent {
+export class TeamDetailComponent implements OnInit, OnDestroy {
     private route = inject(ActivatedRoute);
     private modalService = inject(ModalService);
 
     tasksService = inject(TasksService);
+    authState = inject(AuthStateService);
 
     teamId = signal<string>('');
     team = signal<Team | null | undefined>(undefined);
@@ -39,6 +51,9 @@ export class TeamDetailComponent {
     readonly calendarRowHeightPx = 48;
     /** ヘッダー列（曜日・日付）の下からタスク層までのオフセット（template の .task-layer top と一致） */
     readonly calendarHeaderBandPx = 65;
+
+    private teamEditModalWasOpen = false;
+    private modalSub?: Subscription;
 
     // メニュー
     isSortMenuOpen: boolean = false;
@@ -56,14 +71,53 @@ export class TeamDetailComponent {
         this.team.set(teamData);
 
         const members = await getTeamMembersByTeamId(teamId);
+        await this.enrichMemberUsers(members);
         this.teamMembers.set(members);
 
         const tasks = await getTasksByTeamId(teamId);
+        await this.tasksService.loadTaskTags(tasks);
         this.tasksService.setTasks(tasks);
         this.tasksService.setTaskListContextTeam(teamId);
         this.tasksService.searchQuery.set('');
         this.tasksService.closeAllFilterMenus();
         this.tasksService.sortKey = null;
+
+        this.modalSub = this.modalService.modalState$.subscribe((s) => {
+            const closingTeamEdit = this.teamEditModalWasOpen && !s.isOpen;
+            this.teamEditModalWasOpen = !!(s.isOpen && s.type === 'team-edit');
+            if (closingTeamEdit) {
+                void this.reloadTeamSnapshot();
+            }
+        });
+    }
+
+    ngOnDestroy(): void {
+        this.modalSub?.unsubscribe();
+    }
+
+    private async enrichMemberUsers(members: TeamMember[]): Promise<void> {
+        await Promise.all(
+            members.map(async (m) => {
+                if (m.user) return;
+                const u = await getUser(m.userId);
+                if (u) m.user = u;
+            }),
+        );
+    }
+
+    /** チーム編集モーダル保存・閉じたあとにヘッダー名などを同期 */
+    private async reloadTeamSnapshot(): Promise<void> {
+        const id = this.teamId();
+        if (!id) return;
+        const teamData = await getTeamById(id);
+        this.team.set(teamData);
+        const members = await getTeamMembersByTeamId(id);
+        await this.enrichMemberUsers(members);
+        this.teamMembers.set(members);
+    }
+
+    openTeamEditModal(team: Team) {
+        this.modalService.open('team-edit', { ...team });
     }
 
     openTeamMemberDetailModal(members: TeamMember[]) {
@@ -78,11 +132,22 @@ export class TeamDetailComponent {
         this.modalService.open('task-edit', task);
     }
 
+    isTaskCreatorTask(task: Task): boolean {
+        return isTaskCreator(task, this.authState.uid);
+    }
+
+    deletableDisplayedTasks(status: 'notDone' | 'done'): Task[] {
+        return this.displayTasks(status).filter((t) => this.isTaskCreatorTask(t));
+    }
+
     async dropTask(event: CdkDragDrop<Task[]>) {
         if (event.previousContainer === event.container) {
             return;
         }
         const movedTask = event.previousContainer.data[event.previousIndex];
+        if (!this.isTaskCreatorTask(movedTask)) {
+            return;
+        }
         const newStatus = event.container.id as Task['status'];
 
         this.tasksService.tasks.update((tasks) =>
@@ -100,7 +165,13 @@ export class TeamDetailComponent {
         }
     }
 
+    tagPillClass(color: string): string {
+        return `task-pill task-pill--tag-${color}`;
+    }
+
     onRowCheckboxChange(taskId: string, checked: boolean) {
+        const task = this.tasksService.tasks().find((t) => t.id === taskId);
+        if (!task || !this.isTaskCreatorTask(task)) return;
         if (checked) {
             if (!this.selectedTaskIds.includes(taskId)) {
                 this.selectedTaskIds = [...this.selectedTaskIds, taskId];
@@ -111,12 +182,12 @@ export class TeamDetailComponent {
     }
 
     isAllDisplayedNotDoneSelected(): boolean {
-        const tasks = this.displayTasks('notDone');
+        const tasks = this.deletableDisplayedTasks('notDone');
         return tasks.length > 0 && tasks.every((t) => this.selectedTaskIds.includes(t.id));
     }
 
     onToggleSelectAllNotDone(checked: boolean) {
-        const ids = this.displayTasks('notDone').map((t) => t.id);
+        const ids = this.deletableDisplayedTasks('notDone').map((t) => t.id);
         if (checked) {
             this.selectedTaskIds = [...new Set([...this.selectedTaskIds, ...ids])];
         } else {
@@ -127,12 +198,24 @@ export class TeamDetailComponent {
 
     async deleteSelectedTask() {
         if (this.selectedTaskIds.length === 0) return;
-        const ok = window.confirm(`選択中の${this.selectedTaskIds.length}件のタスクを削除しますか？`);
+        const uid = this.authState.uid;
+        const allIds = [...this.selectedTaskIds];
+        const allowed = allIds.filter((id) => {
+            const t = this.tasksService.tasks().find((x) => x.id === id);
+            return t && isTaskCreator(t, uid);
+        });
+        if (allowed.length === 0) {
+            window.alert('選択した課題のうち、削除できるのは作成した課題のみです。');
+            return;
+        }
+        if (allowed.length < allIds.length) {
+            window.alert('作成者のみ削除できるため、該当する課題のみ削除します。');
+        }
+        const ok = window.confirm(`選択中のうち、削除できる${allowed.length}件のタスクを削除しますか？`);
         if (!ok) return;
 
-        const ids = [...this.selectedTaskIds];
         try {
-            for (const taskId of ids) {
+            for (const taskId of allowed) {
                 await deleteChildrenTask(taskId);
                 this.tasksService.deleteTask(taskId);
             }

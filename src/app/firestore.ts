@@ -9,6 +9,7 @@ import {
     updateDoc,
     deleteDoc,
     documentId,
+    onSnapshot,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { AddTaskInput, Task, AddTagInput, Tag } from "./types/task";
@@ -112,6 +113,154 @@ export async function getMainTasks(uid: string) {
         throw error;
     }
 }
+
+/**
+ * マイタスク（個人スコープ）用: トップレベル・非プロジェクト・非チームで、
+ * ログインユーザーが作成者または担当者の課題（重複は id でマージ）。
+ * Firestore の複合インデックスが必要になる場合があります（コンソールのリンクに従ってください）。
+ */
+export async function getPersonalInboxTasks(uid: string): Promise<Task[]> {
+    try {
+        const byId = new Map<string, Task>();
+        const qCreator = query(
+            collection(db, 'tasks'),
+            where('parentTaskId', '==', null),
+            where('projectId', '==', null),
+            where('teamId', '==', null),
+            where('uid', '==', uid),
+        );
+        const qAssignee = query(
+            collection(db, 'tasks'),
+            where('parentTaskId', '==', null),
+            where('projectId', '==', null),
+            where('teamId', '==', null),
+            where('assignedUid', '==', uid),
+        );
+        const [snapA, snapB] = await Promise.all([
+            getDocs(qCreator),
+            getDocs(qAssignee),
+        ]);
+        snapA.forEach((d) =>
+            byId.set(d.id, { id: d.id, ...d.data() } as Task),
+        );
+        snapB.forEach((d) =>
+            byId.set(d.id, { id: d.id, ...d.data() } as Task),
+        );
+        return [...byId.values()];
+    } catch (error) {
+        throw error;
+    }
+}
+
+/** プロジェクトにルート課題が1件でも未完了なら true */
+export async function projectHasIncompleteRootTasks(
+    projectId: string,
+): Promise<boolean> {
+    try {
+        const tasks = await getTasksByProjectId(projectId);
+        return tasks.some(
+            (t) =>
+                t.parentTaskId == null &&
+                t.status !== '完了',
+        );
+    } catch {
+        return false;
+    }
+}
+
+/** ユーザーがメンバーであるプロジェクトのうち、未完了ルート課題が1件以上あるものの件数 */
+export async function countActiveProjectsForUser(uid: string): Promise<number> {
+    const projects = await getProjectsByUserId(uid);
+    let n = 0;
+    for (const p of projects) {
+        if (await projectHasIncompleteRootTasks(p.id)) n++;
+    }
+    return n;
+}
+
+export type PersonalGoalProgressSummary = {
+    goalCount: number;
+    achievedCount: number;
+    /** リンク済み課題が1件以上ある目標のみの平均完了率（0–100）。該当なしは null */
+    averageLinkedTaskPercent: number | null;
+    /** ゴール画面で詳細を開く推奨（未達成を優先） */
+    primaryGoalId: string | null;
+};
+
+function goalUpdatedAtToString(v: unknown): string {
+    if (v == null) return '';
+    if (typeof v === 'string') return v;
+    if (
+        typeof v === 'object' &&
+        'toDate' in (v as object) &&
+        typeof (v as { toDate: () => Date }).toDate === 'function'
+    ) {
+        return (v as { toDate: () => Date }).toDate().toISOString();
+    }
+    return String(v);
+}
+
+export async function getPersonalGoalProgressSummary(
+    uid: string,
+): Promise<PersonalGoalProgressSummary> {
+    const snap = await getDocs(
+        query(
+            collection(db, 'goals'),
+            where('scope', '==', 'personal'),
+            where('ownerId', '==', uid),
+        ),
+    );
+    const goals: {
+        id: string;
+        status: string;
+        updatedAt: string;
+    }[] = [];
+    snap.forEach((d) => {
+        const data = d.data();
+        goals.push({
+            id: d.id,
+            status: String(data['status'] ?? '未着手'),
+            updatedAt: goalUpdatedAtToString(data['updatedAt']),
+        });
+    });
+    if (goals.length === 0) {
+        return {
+            goalCount: 0,
+            achievedCount: 0,
+            averageLinkedTaskPercent: null,
+            primaryGoalId: null,
+        };
+    }
+    const achievedCount = goals.filter((g) => g.status === '達成').length;
+    let sumPct = 0;
+    let nLinked = 0;
+    for (const g of goals) {
+        const tSnap = await getDocs(
+            query(collection(db, 'tasks'), where('goalId', '==', g.id)),
+        );
+        const list: Task[] = [];
+        tSnap.forEach((d) =>
+            list.push({ id: d.id, ...d.data() } as Task),
+        );
+        if (list.length === 0) continue;
+        const done = list.filter((t) => t.status === '完了').length;
+        sumPct += Math.round((100 * done) / list.length);
+        nLinked++;
+    }
+    const sorted = [...goals].sort((a, b) =>
+        b.updatedAt.localeCompare(a.updatedAt),
+    );
+    const primary =
+        sorted.find((g) => g.status !== '達成')?.id ?? sorted[0]?.id ?? null;
+    return {
+        goalCount: goals.length,
+        achievedCount,
+        averageLinkedTaskPercent:
+            nLinked > 0 ? Math.round(sumPct / nLinked) : null,
+        primaryGoalId: primary,
+    };
+}
+
 // ドキュメントIDからタスクを取得
 export async function getTask(id: string) {
     try {
@@ -235,6 +384,31 @@ export async function addTag(inputTag: AddTagInput) {
         throw error;
     }
 }
+
+/** タグ名・色の更新（定義の編集） */
+export async function updateTag(
+    tagId: string,
+    data: { name: string; color: string },
+): Promise<void> {
+    try {
+        await updateDoc(doc(db, 'tags', tagId), {
+            name: data.name,
+            color: data.color,
+        });
+    } catch (error) {
+        throw error;
+    }
+}
+/** タグの削除（定義の編集） */
+export async function deleteTag(tagId: string): Promise<boolean> {
+    try {
+        await deleteDoc(doc(db, 'tags', tagId));
+        return true;
+    } catch (error) {
+        throw error;
+    }
+}
+
 // タグを取得
 export async function getTags(uid: string) {
     try {
@@ -266,6 +440,42 @@ export async function getTagsByIds(tagIds: string[]) {
         throw error;
     }
 }
+// プロジェクトタスク担当者候補の取得
+export async function getProjectTaskAssignableUsers(projectId: string) {
+    try {
+        const projectMemberRef = collection(db, 'projectMembers');
+        const q = query(projectMemberRef, where('projectId', '==', projectId));
+        const snapshot = await getDocs(q);
+        const assignableUsers = await Promise.all(
+            snapshot.docs.map(async (doc) => {
+                const member = doc.data() as ProjectMember;
+                return await getUser(member.userId);
+            })
+        )
+        return assignableUsers.filter((user): user is User => user !== null);
+
+    } catch (error) {
+        throw error;
+    }
+}
+// チームタスク担当者候補の取得
+export async function getTeamTaskAssignableUsers(teamId: string) {
+    try {
+        const teamMemberRef = collection(db, 'teamMembers');
+        const q = query(teamMemberRef, where('teamId', '==', teamId));
+        const snapshot = await getDocs(q);
+        const assignableUsers = await Promise.all(
+            snapshot.docs.map(async (doc) => {
+                const member = doc.data() as TeamMember;
+                return await getUser(member.userId);
+            })
+        )
+        return assignableUsers.filter((user): user is User => user !== null);
+    } catch (error) {
+        throw error;
+    }
+}
+
 
 // コメント
 // コメントを追加
@@ -487,6 +697,32 @@ export async function getTasksByProjectId(projectId: string) {
         return [];
     }
 }
+
+/** プロジェクト配下タスクのリアルタイム購読（モーダル保存・他端末の変更を一覧に反映） */
+export function subscribeTasksByProjectId(
+    projectId: string,
+    onTasks: (tasks: Task[]) => void,
+): () => void {
+    const q = query(
+        collection(db, 'tasks'),
+        where('projectId', '==', projectId),
+    );
+    return onSnapshot(
+        q,
+        (snapshot) => {
+            const tasks: Task[] = [];
+            snapshot.forEach((d) => {
+                tasks.push({ id: d.id, ...d.data() } as Task);
+            });
+            onTasks(tasks);
+        },
+        (error) => {
+            console.error('プロジェクトタスクの購読に失敗しました', error);
+            onTasks([]);
+        },
+    );
+}
+
 // プロジェクトへの招待
 export async function invite(
     type: 'project' | 'team',
@@ -818,6 +1054,57 @@ export async function addTeamMember(addTeamMemberInput: AddTeamMemberInput) {
         throw error;
     }
 }
+
+// チームを更新
+export async function updateTeam(teamId: string, inputTeam: AddTeamInput) {
+    try {
+        const teamRef = doc(db, 'teams', teamId);
+        await updateDoc(teamRef, {
+            ...inputTeam,
+            updatedAt: new Date(),
+        });
+    } catch (error) {
+        throw error;
+    }
+}
+
+// チームを削除
+export async function deleteTeam(teamId: string) {
+    try {
+        await deleteDoc(doc(db, 'teams', teamId));
+    } catch (error) {
+        throw error;
+    }
+}
+
+// チームに紐づく teamMembers をすべて削除
+export async function deleteTeamAllMembers(teamId: string) {
+    try {
+        const teamMemberRef = collection(db, 'teamMembers');
+        const q = query(teamMemberRef, where('teamId', '==', teamId));
+        const snapshot = await getDocs(q);
+        await Promise.all(snapshot.docs.map((d) => deleteDoc(d.ref)));
+    } catch (error) {
+        throw error;
+    }
+}
+
+/** 指定ユーザーをチームメンバーから外す */
+export async function removeTeamMember(userId: string, teamId: string) {
+    try {
+        const teamMemberRef = collection(db, 'teamMembers');
+        const q = query(
+            teamMemberRef,
+            where('teamId', '==', teamId),
+            where('userId', '==', userId),
+        );
+        const snapshot = await getDocs(q);
+        await Promise.all(snapshot.docs.map((d) => deleteDoc(d.ref)));
+    } catch (error) {
+        throw error;
+    }
+}
+
 // ユーザーIDが所属しているチームIDを取得
 export async function getTeamIdsByUserId(uid: string) {
     try {

@@ -1,10 +1,9 @@
 import { Injectable, signal, inject, computed } from '@angular/core';
 import {
-    getMainTasks, 
+    getPersonalInboxTasks,
     getTask,
     existsNotification,
     addNotification,
-    getProject,
     getTagsByIds,
  } from '../firestore';
 import { FilterKey, SortKey, Task, initialTask } from '../types/task';
@@ -17,6 +16,20 @@ import { Tag } from '../types/task';
 export type TaskListContext =
     | { mode: 'main' }
     | { mode: 'team'; teamId: string };
+
+/**
+ * プロフィールの個人レポートから遷移したときの一覧絞り込み。
+ * - assigned: 自身が担当に設定されている課題のみ（完了・未完了の両方）
+ * - notDone / done: 該当セクションのみ表示（テンプレ側と組み合わせ）
+ * - dueSoon / overdue: 未完了のうち期日が近い／超過のみ
+ */
+export type MyTasksProfileListMode =
+    | null
+    | 'assigned'
+    | 'notDone'
+    | 'done'
+    | 'dueSoon'
+    | 'overdue';
 
 @Injectable({
     providedIn: 'root'
@@ -32,12 +45,46 @@ export class TasksService {
     /** チーム詳細で tasks.component と同等 UI を表示するときに呼ぶ */
     setTaskListContextTeam(teamId: string) {
         this.taskListContext.set({ mode: 'team', teamId });
+        this.myTasksProfileListMode.set(null);
     }
 
     /** マイタスク等に戻るとき */
     setTaskListContextMain() {
         this.taskListContext.set({ mode: 'main' });
+        this.myTasksProfileListMode.set(null);
     }
+
+    /** クエリパラメータ view からマイタスクの表示モードを設定 */
+    syncMyTasksProfileListModeFromQuery(view: string | null) {
+        if (this.taskListContext().mode !== 'main') {
+            this.myTasksProfileListMode.set(null);
+            return;
+        }
+        const allowed: MyTasksProfileListMode[] = [
+            'assigned',
+            'notDone',
+            'done',
+            'dueSoon',
+            'overdue',
+        ];
+        const v = (view ?? '') as MyTasksProfileListMode;
+        if (!view || !allowed.includes(v)) {
+            this.myTasksProfileListMode.set(null);
+            return;
+        }
+        this.myTasksProfileListMode.set(v);
+        this.displayFormat = 'list';
+    }
+
+    clearMyTasksProfileListMode() {
+        this.myTasksProfileListMode.set(null);
+    }
+
+    /**
+     * プロフィールからのマイタスク絞り込み（クエリ view と同期）。
+     * チーム詳細では常に null。
+     */
+    myTasksProfileListMode = signal<MyTasksProfileListMode>(null);
 
     /** 一覧・検索対象となるタスク（コンテキストに応じて絞り込み） */
     private scopedTasksSource = computed(() => {
@@ -88,22 +135,33 @@ export class TasksService {
     // タスクを読み込む
     async loadMainTasks() {
         try {
-            const tasks = await getMainTasks(this.authState.uid);
-            // タグの取得
-            tasks.forEach(async (task) => {
-                const tags = await getTagsByIds(task.tagIds);
-                task.tags = tags;
-            });
-            // 取得待ちの間にチーム詳細へ遷移した場合は一覧を上書きしない
-            if (this.taskListContext().mode !== 'main') {
-                return;
-            }
-            this.setTasks(tasks);
+            // タスクの取得
+            const tasks = await getPersonalInboxTasks(this.authState.uid);
+            
+            
+            const tasksWithTags = await this.loadTaskTags(tasks);;
+            if (this.taskListContext().mode !== 'main') return;
+
+            // タスクをセット
+            this.setTasks(tasksWithTags);
 
             // 期日が近いタスクの通知を作成
             await this.createTaskDeadlineNotification(tasks);
         } catch (error) {
             console.error('タスク読み込み失敗: ', error);
+        }
+    }
+
+    async loadTaskTags(tasks: Task[]) {
+        try {
+            await Promise.all(tasks.map(async (task) => {
+                // タグの設定
+                task.tags = await getTagsByIds(task.tagIds);
+            }));
+            return tasks;
+        } catch (error) {
+            console.error('タグ読み込み失敗: ', error);
+            return [];
         }
     }
 
@@ -241,9 +299,9 @@ export class TasksService {
     }
 
     // タグ
-    tagsFilter: string | null = null;
+    tagFilter: Tag | null = null;
     isTagsFilterOpen: boolean = false;
-    tags: Tag[] = [];
+    allTaskTags: Tag[] = [];
 
     toggleTagsFilter() {
       if (this.isTagsFilterOpen) {
@@ -253,74 +311,145 @@ export class TasksService {
       this.closeAllFilterMenus();
       this.isTagsFilterOpen = true;
     }
-    selectTags(value: string | null) {
-        this.tagsFilter = value;
+    selectTags(value: Tag | null) {
+        this.tagFilter = value;
         this.isTagsFilterOpen = false;
     }
     clearTagsFilter() {
-      this.tagsFilter = null;
+      this.tagFilter = null;
     }
 
     // 画面に表示するタスクを取得
-    getDisplayTasks(status: 'notDone' | 'done') {
-        let tasks = [...this.scopedTasksSource()];
-        if(status === 'notDone') {
-            tasks = tasks.filter(task => task.status !== '完了');
-        } else {
-            tasks = tasks.filter(task => task.status === '完了');
+    getDisplayTasks(status: 'notDone' | 'done' | null = null) {
+        return this.applyListPipeline([...this.scopedTasksSource()], status);
+    }
+
+    /**
+     * マイタスク以外（プロジェクト詳細など）で、現在のフィルター・ソート・検索設定を
+     * 任意のタスク配列に適用する。
+     */
+    applyListPipeline(
+        tasks: Task[],
+        status: 'notDone' | 'done' | null,
+    ): Task[] {
+        let result = [...tasks];
+        if (status === 'notDone') {
+            result = result.filter((task) => task.status !== '完了');
+        } else if (status === 'done') {
+            result = result.filter((task) => task.status === '完了');
         }
 
-        // フィルター
-        if(this.priorityFilter) {
-            if(this.priorityFilter === '未設定') {
-                tasks = tasks.filter(task => task.priority === null);
+        const mode = this.myTasksProfileListMode();
+        const uid = this.authState.uid;
+        if (mode && uid) {
+            if (mode === 'notDone' && status === 'done') {
+                result = [];
+            } else if (mode === 'done' && status === 'notDone') {
+                result = [];
+            } else if (
+                (mode === 'dueSoon' || mode === 'overdue') &&
+                status === 'done'
+            ) {
+                result = [];
+            } else if (mode === 'assigned') {
+                result = result.filter((t) => t.assignedUid === uid);
+            } else if (mode === 'dueSoon' && status === 'notDone') {
+                result = result.filter(
+                    (t) =>
+                        t.dueDate != null &&
+                        t.status !== '完了' &&
+                        this.dueDateDiffDaysFromToday(t.dueDate) >= 0 &&
+                        this.dueDateDiffDaysFromToday(t.dueDate) <= 2,
+                );
+            } else if (mode === 'overdue' && status === 'notDone') {
+                result = result.filter(
+                    (t) =>
+                        t.dueDate != null &&
+                        t.status !== '完了' &&
+                        this.dueDateDiffDaysFromToday(t.dueDate) < 0,
+                );
+            }
+        }
+
+        if (this.priorityFilter) {
+            if (this.priorityFilter === '未設定') {
+                result = result.filter((task) => task.priority === null);
             } else {
-                tasks = tasks.filter(task => task.priority === this.priorityFilter);
+                result = result.filter(
+                    (task) => task.priority === this.priorityFilter,
+                );
             }
         }
-        if(this.progressFilter) {
-            tasks = tasks.filter(task => task.status === this.progressFilter);
+        if (this.progressFilter) {
+            result = result.filter(
+                (task) => task.status === this.progressFilter,
+            );
         }
-        if(this.dueDateFilter) {
-            if(this.dueDateFilter === '今日') {
-                tasks = tasks.filter(task => task.dueDate && this.isDueDateWithin(task.dueDate, 0));
-            } else if(this.dueDateFilter === '明日') {
-                tasks = tasks.filter(task => task.dueDate && this.isDueDateWithin(task.dueDate, 1));
-            } else if(this.dueDateFilter === '1週間') {
-                tasks = tasks.filter(task => task.dueDate && this.isDueDateWithin(task.dueDate, 7));
-            } else if(this.dueDateFilter === '未設定') {
-                tasks = tasks.filter(task => task.dueDate === null);
+        if (this.dueDateFilter) {
+            if (this.dueDateFilter === '今日') {
+                result = result.filter(
+                    (task) =>
+                        task.dueDate &&
+                        this.isDueDateWithin(task.dueDate, 0),
+                );
+            } else if (this.dueDateFilter === '明日') {
+                result = result.filter(
+                    (task) =>
+                        task.dueDate &&
+                        this.isDueDateWithin(task.dueDate, 1),
+                );
+            } else if (this.dueDateFilter === '1週間') {
+                result = result.filter(
+                    (task) =>
+                        task.dueDate &&
+                        this.isDueDateWithin(task.dueDate, 7),
+                );
+            } else if (this.dueDateFilter === '未設定') {
+                result = result.filter((task) => task.dueDate === null);
             }
+        }
+        if (this.tagFilter) {
+            const tag = this.tagFilter;
+            result = result.filter((task) =>
+                (task.tagIds ?? []).includes(tag.id),
+            );
         }
 
-        // ソート
-        if(this.sortKey) {
-            tasks.sort((a, b) => {
-                if(this.sortKey === 'dueDate') {
-                    const aTime = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
-                    const bTime = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        if (this.sortKey) {
+            result.sort((a, b) => {
+                if (this.sortKey === 'dueDate') {
+                    const aTime = a.dueDate
+                        ? new Date(a.dueDate).getTime()
+                        : Number.MAX_SAFE_INTEGER;
+                    const bTime = b.dueDate
+                        ? new Date(b.dueDate).getTime()
+                        : Number.MAX_SAFE_INTEGER;
                     return aTime - bTime;
-                } else if (this.sortKey === 'createdAt') {
+                }
+                if (this.sortKey === 'createdAt') {
                     const aTime = this.getTimeValue(a.createdAt);
                     const bTime = this.getTimeValue(b.createdAt);
                     return bTime - aTime;
-                } else if (this.sortKey === 'updatedAt') {
+                }
+                if (this.sortKey === 'updatedAt') {
                     const aTime = a.updatedAt
-                    ? new Date(a.updatedAt).getTime()
-                    : 0;
-          
-                  const bTime = b.updatedAt
-                    ? new Date(b.updatedAt).getTime()
-                    : 0;
-          
-                  return bTime - aTime;
+                        ? new Date(a.updatedAt).getTime()
+                        : 0;
+                    const bTime = b.updatedAt
+                        ? new Date(b.updatedAt).getTime()
+                        : 0;
+                    return bTime - aTime;
                 }
                 return 0;
             });
         }
 
-        // 検索
-        return this.filterTasksBySearchQuery(tasks);
+        return this.filterTasksBySearchQuery(result);
+    }
+
+    /** ボード列用: 検索語のみ適用（マイタスクの filtered*Tasks と同じ） */
+    applySearchOnly(tasks: Task[]): Task[] {
+        return this.filterTasksBySearchQuery([...tasks]);
     }
     getTimeValue(value: any): number {
         if (!value) return 0;
@@ -399,6 +528,15 @@ export class TasksService {
         console.error('期限が近いタスクの通知作成失敗: ', error);
         }
     }
+    /** 今日 0:00 を基準とした期日までの日数差（プロフィール集計と同一） */
+    dueDateDiffDaysFromToday(dueDate: string): number {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const due = new Date(dueDate);
+        due.setHours(0, 0, 0, 0);
+        return (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+    }
+
     // 期日が指定した日付以内かどうか
     isDueDateWithin(dueDate: string, days: number) {
         const today = new Date();

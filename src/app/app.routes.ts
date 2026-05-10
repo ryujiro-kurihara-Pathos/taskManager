@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { authGuard } from './guards/auth.guard';
 import { HomeComponent } from './home/home.component';
 import { LoginComponent } from './login/login.component';
 import { SignupComponent } from './signup/signup.component';
@@ -15,7 +16,9 @@ import { GoalComponent } from './home/goals/goals.component';
 
 export const routes: Routes = [
   { 
-    path: 'home', component: HomeComponent,
+    path: 'home',
+    component: HomeComponent,
+    canActivate: [authGuard],
     children: [
         { path: '', pathMatch: 'full', redirectTo: 'tasks' },
         { path: 'tasks', component: TaskComponent },
@@ -34,6 +37,6 @@ export const routes: Routes = [
   { path: 'invite-response/:inviteId', component: InviteResponseComponent },
   { path: 'signup', component: SignupComponent },
   { path: 'login', component: LoginComponent },
-  { path: 'profile', component: ProfileComponent },
+  { path: 'profile', component: ProfileComponent, canActivate: [authGuard] },
   { path: '', redirectTo: 'home', pathMatch: 'full' },
 ];

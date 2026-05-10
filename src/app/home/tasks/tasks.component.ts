@@ -1,4 +1,6 @@
 import { Component, HostListener, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
 import { TasksService } from '../../services/tasks.service';
 import { CommonModule } from '@angular/common';
 import { ModalService } from '../../services/modal.service';
@@ -8,6 +10,7 @@ import { AuthService } from '../../services/auth.service';
 import { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { DragDropModule } from '@angular/cdk/drag-drop';
 import { deleteChildrenTask, updateTask } from '../../firestore';
+import { isTaskCreator } from '../../utils/task-permissions';
 
 @Component({
     selector: 'app-tasks',
@@ -21,6 +24,8 @@ export class TaskComponent {
   tasksService = inject(TasksService);
   authState = inject(AuthStateService);
   authService = inject(AuthService);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   displayFormat: 'list' | 'board' | 'calendar' = 'list';
 
@@ -39,6 +44,16 @@ export class TaskComponent {
   isFilterMenuOpen: boolean = false;
   isSelectedSort: boolean = false;
 
+  constructor() {
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed())
+      .subscribe((pm) => {
+        this.tasksService.syncMyTasksProfileListModeFromQuery(
+          pm.get('view'),
+        );
+      });
+  }
+
   ngOnInit() {
     this.weekDates = this.getWeekDates(this.currentDate);
 
@@ -51,8 +66,51 @@ export class TaskComponent {
     })
   }
 
+  /** プロフィールからの絞り込み表示中の説明文言 */
+  profileViewBannerLabel(): string | null {
+    switch (this.tasksService.myTasksProfileListMode()) {
+      case 'assigned':
+        return '自身が担当に設定されている課題のみ表示しています。';
+      case 'notDone':
+        return '未完了の課題のみ表示しています。';
+      case 'done':
+        return '完了済みの課題のみ表示しています。';
+      case 'dueSoon':
+        return '期限が近い未完了課題のみ表示しています（期日まで2日以内）。';
+      case 'overdue':
+        return '期限を過ぎた未完了課題のみ表示しています。';
+      default:
+        return null;
+    }
+  }
+
+  clearProfileListView(): void {
+    this.tasksService.clearMyTasksProfileListMode();
+    void this.router.navigate(['/home/tasks'], { replaceUrl: true });
+  }
+
+  /** プロフィール由来の「完了のみ」では未完了テーブルを出さない */
+  showMyTasksNotDoneSection(): boolean {
+    return this.tasksService.myTasksProfileListMode() !== 'done';
+  }
+
+  /** 未完了・期限系の絞り込みでは完了ブロックを出さない */
+  showMyTasksDoneSection(): boolean {
+    const m = this.tasksService.myTasksProfileListMode();
+    return m !== 'notDone' && m !== 'dueSoon' && m !== 'overdue';
+  }
+
   openTaskModal(type: 'task-edit' | 'task-add', task: any) {
     this.modalService.open(type, task);
+  }
+
+  isTaskCreatorTask(task: Task): boolean {
+    return isTaskCreator(task, this.authState.uid);
+  }
+
+  /** 一括選択・削除の対象（作成者のみ） */
+  deletableDisplayedTasks(status: 'notDone' | 'done' | null = null): Task[] {
+    return this.displayTasks(status).filter((t) => this.isTaskCreatorTask(t));
   }
 
   async dropTask(event: CdkDragDrop<Task[]>) {
@@ -60,6 +118,9 @@ export class TaskComponent {
       return;
     }
     const movedTask = event.previousContainer.data[event.previousIndex];
+    if (!this.isTaskCreatorTask(movedTask)) {
+      return;
+    }
     const newStatus = event.container.id as Task['status'];
 
     this.tasksService.tasks.update(tasks =>
@@ -81,6 +142,8 @@ export class TaskComponent {
   }
 
   onRowCheckboxChange(taskId: string, checked: boolean) {
+    const task = this.tasksService.tasks().find((t) => t.id === taskId);
+    if (!task || !this.isTaskCreatorTask(task)) return;
     if (checked) {
       if (!this.selectedTaskIds.includes(taskId)) {
         this.selectedTaskIds = [...this.selectedTaskIds, taskId];
@@ -90,13 +153,16 @@ export class TaskComponent {
     }
   }
 
-  isAllDisplayedNotDoneSelected(): boolean {
-    const tasks = this.displayTasks('notDone');
-    return tasks.length > 0 && tasks.every((t) => this.selectedTaskIds.includes(t.id));
+  isAllDisplayedSelected(): boolean {
+    const deletable = this.deletableDisplayedTasks('notDone');
+    return (
+      deletable.length > 0 &&
+      deletable.every((t) => this.selectedTaskIds.includes(t.id))
+    );
   }
 
-  onToggleSelectAllNotDone(checked: boolean) {
-    const ids = this.displayTasks('notDone').map((t) => t.id);
+  onToggleSelectAll(checked: boolean) {
+    const ids = this.deletableDisplayedTasks('notDone').map((t) => t.id);
     if (checked) {
       this.selectedTaskIds = [...new Set([...this.selectedTaskIds, ...ids])];
     } else {
@@ -107,9 +173,21 @@ export class TaskComponent {
 
   async deleteSelectedTask() {
     if (this.selectedTaskIds.length === 0) return;
-    const ids = [...this.selectedTaskIds];
+    const uid = this.authState.uid;
+    const allIds = [...this.selectedTaskIds];
+    const allowed = allIds.filter((id) => {
+      const t = this.tasksService.tasks().find((x) => x.id === id);
+      return t && isTaskCreator(t, uid);
+    });
+    if (allowed.length === 0) {
+      window.alert('選択した課題のうち、削除できるのは作成した課題のみです。');
+      return;
+    }
+    if (allowed.length < allIds.length) {
+      window.alert('作成者のみ削除できるため、該当する課題のみ削除します。');
+    }
     try {
-      for (const taskId of ids) {
+      for (const taskId of allowed) {
         await deleteChildrenTask(taskId);
         this.tasksService.deleteTask(taskId);
       }
@@ -120,7 +198,7 @@ export class TaskComponent {
   }
 
   // 画面に表示するタスク
-  displayTasks(status: 'notDone' | 'done') {
+  displayTasks(status: 'notDone' | 'done' | null = null) {
     return this.tasksService.getDisplayTasks(status);
   }
 
@@ -208,6 +286,22 @@ export class TaskComponent {
       return '';
   }
 
+  /** ボードカード用の期間ラベル（未設定はプレースホルダ） */
+  boardDateRangeLabel(task: Task): string {
+    const a = (task.startDate ?? '').toString().trim();
+    const b = (task.dueDate ?? '').toString().trim();
+    if (!a && !b) {
+      return '期間未設定';
+    }
+    if (a && b) {
+      return `${a} 〜 ${b}`;
+    }
+    if (b) {
+      return `期限 ${b}`;
+    }
+    return `開始 ${a}`;
+  }
+
   /** 進捗セル用ピル */
   progressPillClass(status: string): string {
     switch (status) {
@@ -230,6 +324,11 @@ export class TaskComponent {
     if (priority === '中') return 'task-pill task-pill--pri-medium';
     if (priority === '低') return 'task-pill task-pill--pri-low';
     return 'task-pill task-pill--pri-none';
+  }
+
+  /** タグセル用ピル */
+  tagPillClass(color: string): string {
+    return `task-pill task-pill--tag-${color}`;
   }
 
   // カレンダー

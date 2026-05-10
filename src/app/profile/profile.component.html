@@ -4,16 +4,145 @@
     </header>
     <div class="profile-actions">
         <button type="button" class="btn home-btn" routerLink="/home">ホームへ</button>
-        <button type="button" class="btn edit-btn" (click)="startEdit()">プロフィールを編集する</button>
+        <button type="button" class="btn edit-btn" (click)="startEdit()">ユーザー名を編集</button>
         <button type="button" class="btn logout-btn" (click)="openLogoutConfirm()">ログアウト</button>
     </div>
-    <div class="profile-info">
+
+    <section class="profile-info" aria-labelledby="profile-basic-heading">
+        <h2 id="profile-basic-heading" class="sr-only">基本情報</h2>
         <div class="profile-circle" aria-hidden="true"></div>
-        <p class="username">ユーザーネーム: {{ userName }}</p>
-        <p class="email">メールアドレス: {{ userEmail }}</p>
-        <p class="uid">ユーザーID: {{ userUid }}</p>
-    </div>
-    
+        <dl class="profile-dl">
+            <div class="profile-dl-row">
+                <dt>ユーザー名</dt>
+                <dd>{{ userName || '（未設定）' }}</dd>
+            </div>
+            <div class="profile-dl-row">
+                <dt>メールアドレス</dt>
+                <dd><span class="readonly-note">表示のみ</span>{{ userEmail || '—' }}</dd>
+            </div>
+            <div class="profile-dl-row">
+                <dt>UID</dt>
+                <dd><span class="readonly-note">表示のみ</span><code class="uid-code">{{ userUid || '—' }}</code></dd>
+            </div>
+            <div class="profile-dl-row profile-dl-row--block">
+                <dt>所属チーム</dt>
+                <dd>
+                    @if (teamsLoading) {
+                        <span class="muted">読み込み中…</span>
+                    } @else if (teams.length === 0) {
+                        <span class="muted">所属チームはありません</span>
+                    } @else {
+                        <ul class="team-chip-list">
+                            @for (team of teams; track team.id) {
+                                <li><a class="team-chip" [routerLink]="['/home/teams', team.id]">{{ team.name }}</a></li>
+                            }
+                        </ul>
+                    }
+                </dd>
+            </div>
+        </dl>
+    </section>
+
+    <section class="task-report" aria-labelledby="task-report-heading">
+        <h2 id="task-report-heading" class="task-report-title">個人レポート</h2>
+        <p class="task-report-note">
+            マイタスク（個人・トップレベル）のうち、あなたが<strong>作成者または担当者</strong>になっている課題を集計しています。
+        </p>
+
+        @if (taskReportLoading) {
+            <p class="task-report-status">読み込み中…</p>
+        } @else if (taskReportError) {
+            <p class="task-report-status task-report-error" role="alert">{{ taskReportError }}</p>
+        } @else if (taskReport) {
+            <ul class="task-report-grid" role="list">
+                <li>
+                    <a class="task-report-card task-report-card--link" [routerLink]="['/home/tasks']" [queryParams]="{ view: 'assigned' }">
+                        <span class="task-report-label">担当課題数</span>
+                        <span class="task-report-value">{{ taskReport.assignedCount }}</span>
+                        <span class="task-report-hint">マイタスクへ</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="task-report-card task-report-card--link" [routerLink]="['/home/tasks']" [queryParams]="{ view: 'notDone' }">
+                        <span class="task-report-label">未完了課題数</span>
+                        <span class="task-report-value">{{ taskReport.notDoneCount }}</span>
+                        <span class="task-report-hint">マイタスクへ</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="task-report-card task-report-card--link" [routerLink]="['/home/tasks']" [queryParams]="{ view: 'done' }">
+                        <span class="task-report-label">完了課題数</span>
+                        <span class="task-report-value">{{ taskReport.doneCount }}</span>
+                        <span class="task-report-hint">マイタスクへ</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="task-report-card task-report-card--link task-report-card--warn" [routerLink]="['/home/tasks']" [queryParams]="{ view: 'dueSoon' }">
+                        <span class="task-report-label">期限間近課題数</span>
+                        <span class="task-report-value">{{ taskReport.dueSoonCount }}</span>
+                        <span class="task-report-hint">マイタスクへ</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="task-report-card task-report-card--link task-report-card--danger" [routerLink]="['/home/tasks']" [queryParams]="{ view: 'overdue' }">
+                        <span class="task-report-label">期限超過課題数</span>
+                        <span class="task-report-value">{{ taskReport.overdueCount }}</span>
+                        <span class="task-report-hint">マイタスクへ</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="task-report-card task-report-card--link" [routerLink]="['/home/projects']" [queryParams]="{ active: '1' }">
+                        <span class="task-report-label">進行中プロジェクト数</span>
+                        <span class="task-report-value">{{ activeProjectCount ?? '—' }}</span>
+                        <span class="task-report-hint">一覧へ</span>
+                    </a>
+                </li>
+                <li>
+                    <a class="task-report-card task-report-card--link" [routerLink]="goalsRouterLink()" [queryParams]="goalsQueryParams()">
+                        <span class="task-report-label">個人目標の進捗</span>
+                        @if (taskReportLoading) {
+                            <span class="task-report-value task-report-value--sub">読み込み中…</span>
+                        } @else if (goalsSummary && goalsSummary.goalCount > 0) {
+                            <span class="task-report-value">
+                                @if (goalsSummary.averageLinkedTaskPercent != null) {
+                                    {{ goalsSummary.averageLinkedTaskPercent }}<span class="task-report-unit">%</span>
+                                } @else {
+                                    —
+                                }
+                            </span>
+                            <span class="task-report-sub">目標 {{ goalsSummary.goalCount }} 件（達成 {{ goalsSummary.achievedCount }}）</span>
+                        } @else {
+                            <span class="task-report-value task-report-value--sub">—</span>
+                            <span class="task-report-sub">個人目標がありません</span>
+                        }
+                        <span class="task-report-hint">ゴール画面へ</span>
+                    </a>
+                </li>
+            </ul>
+        }
+    </section>
+
+    <section class="activity-section" aria-labelledby="activity-heading">
+        <h2 id="activity-heading" class="task-report-title">最近の活動履歴</h2>
+        <p class="task-report-note">マイタスク対象の課題を、最終更新の新しい順に表示しています。</p>
+        @if (taskReportLoading) {
+            <p class="task-report-status">読み込み中…</p>
+        } @else if (recentActivity.length === 0) {
+            <p class="muted">表示できる活動履歴がありません。</p>
+        } @else {
+            <ol class="activity-list">
+                @for (row of recentActivity; track row.taskId) {
+                    <li>
+                        <a class="activity-row" [routerLink]="['/home/tasks']">
+                            <span class="activity-title">{{ row.title }}</span>
+                            <span class="activity-meta">更新: {{ formatActivityTime(row.updatedAt) }}</span>
+                        </a>
+                    </li>
+                }
+            </ol>
+        }
+    </section>
+
     @if (showLogoutConfirm) {
         <div class="logout-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="logout-confirm-title" (click)="cancelLogoutConfirm()">
             <div class="logout-confirm-dialog" (click)="$event.stopPropagation()">
@@ -31,13 +160,15 @@
         <div class="edit-container">
             <div class="edit-form">
                 <div class="edit-top">
-                    <h3 class="edit-title">プロフィールを編集する</h3>
+                    <h3 class="edit-title">ユーザー名を編集</h3>
                     <button type="button" class="edit-cancel" (click)="cancelEdit()" aria-label="閉じる">×</button>
                 </div>
+                <p class="edit-hint">編集できるのはユーザー名のみです。メール・UID・所属チームは変更できません。</p>
                 <div class="profile-circle" aria-hidden="true"></div>
-                <input type="text" [(ngModel)]="editName" placeholder="ユーザーネーム">
-                <p class="email">メールアドレス: {{ userEmail }}</p>
-                <p class="uid">ユーザーID: {{ userUid }}</p>
+                <label class="edit-label" for="profile-edit-name">ユーザー名</label>
+                <input id="profile-edit-name" type="text" [(ngModel)]="editName" placeholder="ユーザーネーム" />
+                <p class="email">メールアドレス（表示のみ）: {{ userEmail }}</p>
+                <p class="uid">UID（表示のみ）: {{ userUid }}</p>
 
                 <button type="button" class="save-btn" (click)="saveEdit()">保存</button>
             </div>
@@ -46,6 +177,18 @@
 </div>
 
 <style>
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
     .profile-container {
         min-height: 100vh;
         max-width: 960px;
@@ -169,10 +312,7 @@
     }
 
     .profile-info {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        max-width: 480px;
+        max-width: 640px;
         width: 100%;
         margin: 0 auto;
         padding: 24px 20px;
@@ -187,25 +327,219 @@
         height: 80px;
         background: linear-gradient(145deg, #5cb564, #3d8f45);
         border-radius: 50%;
-        margin-bottom: 16px;
-    }
-    .profile-info .username,
-    .profile-info .email,
-    .profile-info .uid {
-        margin: 0 0 10px;
-        width: 100%;
-        font-size: 14px;
-        color: #333;
-        line-height: 1.5;
-    }
-    .profile-info .uid {
-        margin-bottom: 0;
-        font-size: 13px;
-        color: #666;
-        word-break: break-all;
+        margin: 0 auto 16px;
     }
 
-    /* 編集モード */
+    .profile-dl {
+        margin: 0;
+    }
+    .profile-dl-row {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 8px 16px;
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
+        font-size: 14px;
+        align-items: start;
+    }
+    .profile-dl-row:last-child {
+        border-bottom: none;
+    }
+    .profile-dl-row--block {
+        grid-template-columns: 1fr;
+    }
+    .profile-dl-row--block dt {
+        grid-column: 1 / -1;
+    }
+    .profile-dl-row--block dd {
+        grid-column: 1 / -1;
+    }
+    .profile-dl dt {
+        margin: 0;
+        font-weight: 600;
+        color: #374151;
+    }
+    .profile-dl dd {
+        margin: 0;
+        color: #111827;
+        word-break: break-word;
+    }
+    .readonly-note {
+        display: inline-block;
+        margin-right: 8px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: #f3f4f6;
+        color: #6b7280;
+        font-size: 11px;
+        font-weight: 600;
+        vertical-align: middle;
+    }
+    .uid-code {
+        font-size: 12px;
+        word-break: break-all;
+    }
+    .muted {
+        color: #6b7280;
+        font-size: 14px;
+    }
+    .team-chip-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .team-chip {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #eef6ef;
+        border: 1px solid #c5ddc8;
+        color: #1f4a24;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 500;
+    }
+    .team-chip:hover {
+        background: #e2f0e4;
+    }
+
+    .task-report {
+        margin-top: 28px;
+        padding-top: 20px;
+        border-top: 1px solid #e0e0e0;
+    }
+    .task-report-title {
+        margin: 0 0 8px;
+        font-size: 17px;
+        font-weight: 700;
+        color: #1a1a1a;
+    }
+    .task-report-note {
+        margin: 0 0 16px;
+        font-size: 13px;
+        color: #5c5c5c;
+        line-height: 1.5;
+    }
+    .task-report-status {
+        margin: 0;
+        font-size: 14px;
+        color: #444;
+    }
+    .task-report-error {
+        color: #b3261e;
+    }
+    .task-report-grid {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 12px;
+    }
+    .task-report-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 14px 12px;
+        background: #fafafa;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        height: 100%;
+        box-sizing: border-box;
+    }
+    .task-report-card--link {
+        text-decoration: none;
+        color: inherit;
+        cursor: pointer;
+        transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .task-report-card--link:hover {
+        border-color: #8fbc93;
+        box-shadow: 0 4px 14px rgba(37, 92, 43, 0.12);
+    }
+    .task-report-card--warn {
+        border-color: #e6d4a8;
+        background: #fffbf0;
+    }
+    .task-report-card--danger {
+        border-color: #e8c4c0;
+        background: #fff8f7;
+    }
+    .task-report-label {
+        font-size: 12px;
+        color: #555;
+        font-weight: 500;
+    }
+    .task-report-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a1a;
+        line-height: 1.2;
+    }
+    .task-report-value--sub {
+        font-size: 16px;
+        font-weight: 600;
+    }
+    .task-report-unit {
+        font-size: 14px;
+        font-weight: 600;
+        margin-left: 2px;
+    }
+    .task-report-sub {
+        font-size: 12px;
+        color: #555;
+        line-height: 1.4;
+    }
+    .task-report-hint {
+        margin-top: auto;
+        font-size: 11px;
+        color: #4ea356;
+        font-weight: 600;
+    }
+
+    .activity-section {
+        margin-top: 28px;
+        padding-top: 20px;
+        border-top: 1px solid #e0e0e0;
+    }
+    .activity-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .activity-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 12px 14px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fafafa;
+        text-decoration: none;
+        color: inherit;
+    }
+    .activity-row:hover {
+        border-color: #c5ddc8;
+        background: #f3faf4;
+    }
+    .activity-title {
+        font-weight: 600;
+        font-size: 14px;
+        color: #111827;
+    }
+    .activity-meta {
+        font-size: 12px;
+        color: #6b7280;
+    }
+
     .edit-container {
         position: fixed;
         inset: 0;
@@ -248,6 +582,13 @@
         color: #1a1a1a;
     }
 
+    .edit-hint {
+        margin: 0;
+        font-size: 13px;
+        color: #5c5c5c;
+        line-height: 1.5;
+    }
+
     .edit-cancel {
         font-size: 22px;
         line-height: 1;
@@ -265,6 +606,12 @@
     .edit-form > .profile-circle {
         align-self: center;
         margin-bottom: 0;
+    }
+
+    .edit-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #374151;
     }
 
     .edit-form input[type="text"] {
