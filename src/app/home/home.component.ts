@@ -14,8 +14,7 @@ import {
   getSubTasks,
   getTask,
   deleteChildrenTask,
-  invite,
-  isAdmin,
+  invite as firestoreInvite,
   deleteProjectMember,
   acceptInvite,
   addTag,
@@ -27,36 +26,63 @@ import {
   deleteProjectAllMembers,
   addProjectMember,
   getTargetIdFromInviteId,
+  getInviteTargetDisplayName,
   addTeamMember,
   getTags,
   deleteTag,
   updateTeam,
   deleteTeam as firestoreDeleteTeam,
   deleteTeamAllMembers as firestoreDeleteTeamAllMembers,
-  removeTeamMember,
+  removeUserFromTeamAndTeamProjects,
+  unreadNotification,
 } from '../firestore';
 import { AuthStateService } from '../services/auth-state.service';
 import { TasksService } from '../services/tasks.service';
 import { AuthService } from '../services/auth.service';
 import { Task, Comment, AddTaskInput, initialTask, AddTagInput, Tag } from '../types/task';
 import { ModalService, ModalState } from '../services/modal.service';
+import { ConfirmDialogService } from '../services/confirm-dialog.service';
+import { ConfirmDialogComponent } from '../shared/confirm-dialog/confirm-dialog.component';
 import { User } from '../types/user';
 import { AddInviteInput, initialInviteInput } from '../types/Invite';
 import { Project, AddProjectInput, ProjectMember, AddProjectMemberInput } from '../types/project';
-import { AddTeamMemberInput, Team, AddTeamInput } from '../types/team';
+import { AddTeamMemberInput, Team, AddTeamInput, TeamMember } from '../types/team';
+import type { Notification } from '../types/notification';
 import { isTaskCreator } from '../utils/task-permissions';
+import { userAvatarInitial } from '../utils/user-avatar';
+import {
+  canDeleteProject,
+  canDeleteTeam,
+  canEditProjectBasics,
+  canEditTeamBasics,
+  canManageProjectMembers,
+  canManageTeamMembers,
+} from '../utils/member-permissions';
 
 @Component({
   selector: 'app-home',
-  imports: [ RouterLink, RouterLinkActive, RouterOutlet, FormsModule, CommonModule ],
+  imports: [
+    RouterLink,
+    RouterLinkActive,
+    RouterOutlet,
+    FormsModule,
+    CommonModule,
+    ConfirmDialogComponent,
+  ],
   templateUrl: './home.component.html',
 })
 
 export class HomeComponent {
+  /** メンバーアイコン・サイドバー用（先頭1文字） */
+  avatarLetter(name: string | null | undefined): string {
+    return userAvatarInitial(name);
+  }
+
   authState = inject(AuthStateService);
   authService = inject(AuthService);
   tasksService = inject(TasksService);
   modalService = inject(ModalService);
+  readonly confirmDialog = inject(ConfirmDialogService);
   router = inject(Router);
 
   modalState: ModalState = {
@@ -97,6 +123,23 @@ export class HomeComponent {
   // プロジェクト
   inviteInput: AddInviteInput = initialInviteInput;
   inviteEmail: string = '';
+  /** 招待メール入力欄直下に表示するフィードバック（alert は使わない） */
+  inviteFeedbackMessage = '';
+  inviteFeedbackSuccess = false;
+
+  /** プロジェクト編集モーダル: 基本情報の保存（owner のみ） */
+  projectEditCanEditBasics = false;
+  /** プロジェクト編集モーダル: メンバー招待・除外（owner / admin） */
+  projectEditCanManageMembers = false;
+  /** プロジェクト編集モーダル: プロジェクト削除（owner のみ） */
+  projectEditCanDeleteProject = false;
+
+  /** チーム編集モーダル: 名前・説明の保存（owner のみ） */
+  teamEditCanEditBasics = false;
+  /** チーム編集モーダル: メンバー招待・チームから除外（owner / admin） */
+  teamEditCanManageMembers = false;
+  /** チーム編集モーダル: チーム削除（teams.ownerId のみ） */
+  teamEditCanDeleteTeam = false;
 
   searchQuery: string = '';
   searchedTasks: Task[] = [];
@@ -104,11 +147,55 @@ export class HomeComponent {
   // メールアドレスでユーザーを検索
   searchedUsers: User[] = [];
 
+  /** 通知詳細（プロジェクト／チーム招待）で表示する招待先の名前 */
+  notificationInviteTargetName = '';
+  private inviteTargetLoadSeq = 0;
+
   @ViewChildren('subTaskInput') subTaskInputs!: QueryList<ElementRef<HTMLInputElement>>;
 
   ngOnInit() {
     this.modalService.modalState$.subscribe((state) => {
       this.modalState = state;
+
+      if (!state.isOpen || state.type !== 'notification-detail') {
+        this.notificationInviteTargetName = '';
+      } else {
+        const n = state.data as Notification;
+        if (n?.type === 'project-invite' || n?.type === 'team-invite') {
+          this.notificationInviteTargetName = '';
+          if (n.sourceId) {
+            void this.loadNotificationInviteTargetName(n.sourceId);
+          }
+        } else {
+          this.notificationInviteTargetName = '';
+        }
+      }
+
+      if (state.isOpen && state.type === 'project-edit' && state.data) {
+        const p = state.data as Project;
+        const uid = this.authState.uid;
+        const members = p.projectMembers ?? [];
+        this.projectEditCanEditBasics = canEditProjectBasics(p, members, uid);
+        this.projectEditCanManageMembers = canManageProjectMembers(p, members, uid);
+        this.projectEditCanDeleteProject = canDeleteProject(p, members, uid);
+      } else {
+        this.projectEditCanEditBasics = false;
+        this.projectEditCanManageMembers = false;
+        this.projectEditCanDeleteProject = false;
+      }
+
+      if (state.isOpen && state.type === 'team-edit' && state.data) {
+        const t = state.data as Team & { teamMembers?: TeamMember[] };
+        const uid = this.authState.uid;
+        const members = t.teamMembers ?? [];
+        this.teamEditCanEditBasics = canEditTeamBasics(t, members, uid);
+        this.teamEditCanManageMembers = canManageTeamMembers(t, members, uid);
+        this.teamEditCanDeleteTeam = canDeleteTeam(t, uid);
+      } else {
+        this.teamEditCanEditBasics = false;
+        this.teamEditCanManageMembers = false;
+        this.teamEditCanDeleteTeam = false;
+      }
 
       if (state.isOpen && (state.type === 'task-edit' || state.type === 'team-task-detail')) {
         this.tagDefinitionsEditMode = false;
@@ -135,8 +222,9 @@ export class HomeComponent {
     this.tagDefinitionsEditMode = false;
     if(type === 'task-edit' || type === 'team-task-detail') {
       this.tasksService.editingTask = { ...initialTask as Task };
-    } else if(type === 'project-invite' || type === 'project-edit' || type === 'team-edit' || type === 'team-member-detail') {
+    } else if(type === 'project-invite' || type === 'project-edit' || type === 'team-edit') {
       this.inviteEmail = '';
+      this.clearInviteFeedback();
     }
     this.modalService.close();
   }
@@ -209,6 +297,12 @@ export class HomeComponent {
       if (!root || root.id !== taskId || !isTaskCreator(root, this.authState.uid)) {
         return;
       }
+      const ok = await this.confirmDialog.confirm({
+        title: 'この課題を削除しますか？',
+        message:
+          '子タスク・コメントもまとめて削除されます。この操作は取り消せません。',
+      });
+      if (!ok) return;
       await deleteChildrenTask(taskId);
       this.closeModal();
       this.tasksService.deleteTask(taskId);
@@ -241,6 +335,13 @@ export class HomeComponent {
 
   isTaskModalReadOnly(): boolean {
     return !this.canEditCurrentModalTask();
+  }
+
+  /** タグ「定義編集」トグルは追加モーダルでは常に有効（編集モーダルは閲覧のみ時のみ無効） */
+  isTagDefinitionsToggleDisabled(): boolean {
+    const t = this.modalState.type;
+    if (t === 'task-add' || t === 'project-add-task') return false;
+    return this.isTaskModalReadOnly();
   }
   // タスクの更新
   async updateTask(task: Task) {
@@ -396,6 +497,12 @@ export class HomeComponent {
     ) {
       return;
     }
+    const ok = await this.confirmDialog.confirm({
+      title: 'このタグを削除しますか？',
+      message:
+        'タグ定義が削除され、課題に付いている当該タグも外れます。よろしいですか？',
+    });
+    if (!ok) return;
     try {
       const isDeleted = await deleteTag(tag.id);
       if(isDeleted) {
@@ -526,29 +633,72 @@ export class HomeComponent {
   }
 
   // コメント
+  /** 一覧表示用（古い順）。createdAt は Firestore Timestamp / Date / ISO に対応 */
+  modalCommentsSorted(comments: Comment[] | null | undefined): Comment[] {
+    if (!comments?.length) return [];
+    return [...comments].sort(
+      (a, b) => this.commentCreatedAtMs(a.createdAt) - this.commentCreatedAtMs(b.createdAt),
+    );
+  }
+
+  private commentCreatedAtMs(createdAt: unknown): number {
+    if (createdAt == null) return 0;
+    if (typeof createdAt === 'object' && createdAt !== null) {
+      const v = createdAt as { toDate?: () => Date; seconds?: number };
+      if (typeof v.toDate === 'function') {
+        const t = v.toDate().getTime();
+        return Number.isNaN(t) ? 0 : t;
+      }
+      if (typeof v.seconds === 'number') return v.seconds * 1000;
+    }
+    if (createdAt instanceof Date) {
+      const t = createdAt.getTime();
+      return Number.isNaN(t) ? 0 : t;
+    }
+    const d = new Date(createdAt as string);
+    const t = d.getTime();
+    return Number.isNaN(t) ? 0 : t;
+  }
+
+  /** コメント投稿者の表示名（モーダル内の担当候補から解決） */
+  commentAuthorLabel(uid: string): string {
+    if (!uid) return '不明';
+    if (uid === this.authState.uid) return 'あなた';
+    const users = this.tasksService.editingTask?.assignableUsers;
+    const u = users?.find((x) => x.id === uid);
+    if (u?.userName) return u.userName;
+    return 'メンバー';
+  }
+
   // コメントの追加
   async addComment(taskId: string) {
     const root = this.modalState.data as Task | null;
     if (!root || root.id !== taskId || !isTaskCreator(root, this.authState.uid)) {
       return;
     }
-    // タスクが既存ものなら更新、新規なら追加をする
+    const text = this.commentContent.trim();
+    if (!text) return;
     try {
       const comment = await addComment({
-          uid: this.authState.uid,
-          taskId: taskId,
-          content: this.commentContent,
+        uid: this.authState.uid,
+        taskId: taskId,
+        content: text,
       });
       this.modalState.data.comments.push(comment);
       this.commentContent = '';
     } catch (error) {
-    console.error("コメント追加失敗: ", error);
+      console.error('コメント追加失敗: ', error);
     }
   }
   // コメントの削除
   async deleteComment(commentId: string) {
     const root = this.modalState.data as Task | null;
     if (!root || !isTaskCreator(root, this.authState.uid)) return;
+    const ok = await this.confirmDialog.confirm({
+      title: 'このコメントを削除しますか？',
+      message: '削除すると元に戻せません。',
+    });
+    if (!ok) return;
     try {
       await deleteComment(commentId);
       this.modalState.data.comments = this.modalState.data.comments.filter((comment: Comment) => comment.id !== commentId);
@@ -557,25 +707,69 @@ export class HomeComponent {
     }
   }
 
+  clearInviteFeedback(): void {
+    this.inviteFeedbackMessage = '';
+    this.inviteFeedbackSuccess = false;
+  }
+
+  /** 招待フィードバーを入力の変更で消す（成功直後にメール欄を空にしただけでは消さない） */
+  onInviteEmailInput(value: string): void {
+    if (!this.inviteFeedbackMessage) return;
+    if (this.inviteFeedbackSuccess && value === '') return;
+    this.clearInviteFeedback();
+  }
+
+  private showInviteFeedback(message: string, success: boolean): void {
+    this.inviteFeedbackMessage = message;
+    this.inviteFeedbackSuccess = success;
+  }
+
   // プロジェクト
   // プロジェクトへの招待
   /** @param closeModalAfterInvite 編集モーダル内から呼ぶときは false */
   async invite(type: 'project' | 'team', targetId: string, closeModalAfterInvite = true) {
+    this.clearInviteFeedback();
+    const email = this.inviteEmail.trim();
+    if (!email) {
+      this.showInviteFeedback('メールアドレスを入力してください。', false);
+      return;
+    }
     try {
-      const isInvited = await invite(
+      const result = await firestoreInvite(
         type,
         targetId,
-        this.inviteEmail,
+        email,
         this.authState.user()?.email ?? '',
         this.authState.uid,
       );
-      if (!isInvited) return;
+      if (result === 'user_not_found') {
+        this.showInviteFeedback('ユーザーが存在しません。', false);
+        return;
+      }
+      if (result === 'already_pending') {
+        this.showInviteFeedback('すでに招待をしています（承認待ちです）。', false);
+        return;
+      }
+      if (result === 'already_member') {
+        this.showInviteFeedback('すでにメンバーです。', false);
+        return;
+      }
+      if (result === 'failed') {
+        this.showInviteFeedback(
+          '招待できませんでした。権限や対象を確認するか、既に招待中の可能性があります。',
+          false,
+        );
+        return;
+      }
+      this.showInviteFeedback('招待を受信トレイに通知しました。', true);
       this.inviteEmail = '';
       if (closeModalAfterInvite) {
+        await new Promise((r) => setTimeout(r, 400));
         this.closeModal();
       }
     } catch (error) {
       console.error("招待失敗: ", error);
+      this.showInviteFeedback('招待に失敗しました。', false);
     }
   }
 
@@ -584,7 +778,7 @@ export class HomeComponent {
     try {
       const uid = this.authState.uid;
       if (!uid) return;
-      if (await isAdmin(uid, project.id)) return;
+      if (canDeleteProject(project, project.projectMembers ?? [], uid)) return;
       await deleteProjectMember(uid, project.id);
       this.closeModal();
       await this.router.navigate(['/home/projects']);
@@ -597,21 +791,56 @@ export class HomeComponent {
     return memberId === this.authState.uid;
   }
   // メンバーを削除
-  async deleteProjectMember(memberId: string, projectId: string) {
+  async deleteProjectMemberFromEdit(targetUserId: string, projectId: string) {
     try {
-      // 管理者でないなら削除できない
-      const isAdminUser = await isAdmin(this.authState.uid, projectId);
-      if (!isAdminUser) return;
-      // メンバーを削除
-      await deleteProjectMember(memberId, projectId);
-      // 表示するメンバーを更新
-      this.modalState.data.projectMembers = this.modalState.data.projectMembers?.filter((member: ProjectMember) => member.id !== memberId);
+      const project = this.modalState.data as Project;
+      if (!canManageProjectMembers(project, project.projectMembers ?? [], this.authState.uid)) {
+        return;
+      }
+      if (targetUserId === project.ownerId) {
+        window.alert('プロジェクトオーナーはこの一覧から外せません。');
+        return;
+      }
+      const ok = await this.confirmDialog.confirm({
+        title: 'メンバーをプロジェクトから外しますか？',
+        message:
+          'このユーザーのプロジェクトへのアクセスが失われます。チームへの所属は維持されます。',
+      });
+      if (!ok) return;
+      await deleteProjectMember(targetUserId, projectId);
+      this.modalState.data.projectMembers = this.modalState.data.projectMembers?.filter(
+        (member: ProjectMember) => member.userId !== targetUserId,
+      );
     } catch (error) {
-      console.error("メンバー削除失敗: ", error);
+      console.error('メンバー削除失敗: ', error);
+    }
+  }
+
+  /** チームから外す（チーム配下の全プロジェクトからも projectMembers を削除） */
+  async removeTeamMemberFromEdit(targetUserId: string, teamId: string) {
+    try {
+      if (!this.teamEditCanManageMembers) return;
+      const team = this.modalState.data as Team;
+      if (targetUserId === team.ownerId) {
+        window.alert('チームオーナーはこの一覧から外せません。');
+        return;
+      }
+      const ok = await this.confirmDialog.confirm({
+        title: 'メンバーをチームから外しますか？',
+        message:
+          'このチームに紐づく全プロジェクトからも外れ、チーム直下の共有課題にもアクセスできなくなります。',
+      });
+      if (!ok) return;
+      await removeUserFromTeamAndTeamProjects(targetUserId, teamId);
+      const data = this.modalState.data as Team & { teamMembers?: TeamMember[] };
+      data.teamMembers = (data.teamMembers ?? []).filter((m) => m.userId !== targetUserId);
+    } catch (error) {
+      console.error('チームメンバー削除失敗: ', error);
     }
   }
   async saveProjectEdit(project: Project) {
     try {
+      if (!this.projectEditCanEditBasics) return;
       const updateProjectInput: AddProjectInput = {
         name: project.name,
         ownerId: project.ownerId,
@@ -629,6 +858,7 @@ export class HomeComponent {
 
   async saveTeamEdit(team: Team) {
     try {
+      if (!this.teamEditCanEditBasics) return;
       const input: AddTeamInput = {
         name: team.name,
         ownerId: team.ownerId,
@@ -648,7 +878,7 @@ export class HomeComponent {
       const uid = this.authState.uid;
       if (!uid) return;
       if (team.ownerId === uid) return;
-      await removeTeamMember(uid, team.id);
+      await removeUserFromTeamAndTeamProjects(uid, team.id);
       this.closeModal();
       await this.router.navigate(['/home/teams']);
     } catch (error) {
@@ -659,7 +889,13 @@ export class HomeComponent {
   async deleteTeamFromEdit(team: Team) {
     try {
       const uid = this.authState.uid;
-      if (!uid || team.ownerId !== uid) return;
+      if (!uid || !canDeleteTeam(team, uid)) return;
+      const ok = await this.confirmDialog.confirm({
+        title: 'チームを削除しますか？',
+        message:
+          'チーム・メンバー・関連データはアプリ上から失われます。この操作は取り消せません。',
+      });
+      if (!ok) return;
       await firestoreDeleteTeamAllMembers(team.id);
       await firestoreDeleteTeam(team.id);
       this.closeModal();
@@ -670,6 +906,13 @@ export class HomeComponent {
   }
   async deleteProject(project: Project) {
     try {
+      if (!this.projectEditCanDeleteProject) return;
+      const ok = await this.confirmDialog.confirm({
+        title: 'プロジェクトを削除しますか？',
+        message:
+          'プロジェクトに紐づく課題やメンバー情報などはアプリ上から失われます。この操作は取り消せません。',
+      });
+      if (!ok) return;
       // プロジェクトを削除
       await deleteProject(project.id);
 
@@ -792,6 +1035,30 @@ export class HomeComponent {
     return this.tasksService.displayTime(createdAt);
   }
 
+  private async loadNotificationInviteTargetName(inviteId: string): Promise<void> {
+    const seq = ++this.inviteTargetLoadSeq;
+    try {
+      const name = await getInviteTargetDisplayName(inviteId);
+      if (seq !== this.inviteTargetLoadSeq) return;
+      this.notificationInviteTargetName =
+        name ?? '（不明）';
+    } catch {
+      if (seq !== this.inviteTargetLoadSeq) return;
+      this.notificationInviteTargetName = '（不明）';
+    }
+  }
+
+  notificationInviteEntityLabel(type: string | undefined): string {
+    switch (type) {
+      case 'project-invite':
+        return 'プロジェクト名';
+      case 'team-invite':
+        return 'チーム名';
+      default:
+        return '';
+    }
+  }
+
   /** 自動通知以外の送信者表示用（名前は ModalService で fromUid から補完済みを想定） */
   notificationSenderRoleLabel(type: string | undefined): string {
     switch (type) {
@@ -807,5 +1074,18 @@ export class HomeComponent {
     if (data.fromName?.trim()) return data.fromName.trim();
     if (data.fromUid) return '名前を取得できませんでした';
     return '不明';
+  }
+
+  // 通知を未読にする
+  async markAsUnread(notification: Notification) {
+    try {
+      const notificationId = notification.id;
+      if (!notificationId) return;
+      await unreadNotification(notificationId);
+      this.modalState.data = { ...this.modalState.data, isRead: false };
+      this.tasksService.patchNotification(notificationId, { isRead: false });
+    } catch (error) {
+      throw error;
+    }
   }
 }

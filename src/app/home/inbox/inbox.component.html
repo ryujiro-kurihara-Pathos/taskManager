@@ -26,6 +26,9 @@
          <button class="inbox-tab-btn-reverse" type="button" 
             [class.active]="isReverseOrder"
             (click)="isReverseOrder = !isReverseOrder">↑↓</button>
+        <button class="inbox-tab-btn-reverse" type="button" (click)="markAllAsRead(notifications)">
+            <span class="inbox-tab-label">すべてを既読にする</span>
+        </button>
     </nav>
     <section class="inbox-list" aria-live="polite">
         @if (activeTab === 'all') {

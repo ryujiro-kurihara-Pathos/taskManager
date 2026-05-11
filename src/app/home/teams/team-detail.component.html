@@ -1,7 +1,10 @@
 <div class="tasks-container">
   <header class="tasks-header tasks-header--team-detail">
     <div class="tasks-header-leading">
-      @if (team()) {
+      @if (teamLoadForbidden()) {
+        <p class="tasks-header-title">アクセスできません</p>
+        <p class="tasks-header-sub">このチームのメンバーではないため、チーム情報を表示できません。</p>
+      } @else if (team()) {
         <p class="tasks-header-title">{{ team()!.name }}</p>
       } @else if (team() === undefined) {
         <p class="tasks-header-title">読み込み中...</p>
@@ -11,358 +14,322 @@
     </div>
     @if (team()) {
       <div class="team-header-actions">
-        <button type="button" class="toolbar-btn team-header-edit-btn" (click)="openTeamEditModal(team()!)">
-          編集
-        </button>
+        @if (canOpenTeamSettingsModal()) {
+          <button type="button" class="toolbar-btn team-header-edit-btn" (click)="openTeamEditModal(team()!)">
+            編集
+          </button>
+        }
         <div
           class="member-list"
-          (click)="openTeamMemberDetailModal(teamMembers())"
-          title="メンバー一覧"
+          [class.member-list--clickable]="canOpenTeamSettingsModal()"
+          (click)="canOpenTeamSettingsModal() && openTeamEditModal(team()!)"
+          [attr.title]="
+            canOpenTeamSettingsModal() ? 'チームを編集（メンバー管理）' : 'メンバー一覧（閲覧のみ）'
+          "
         >
           @for (member of teamMembers(); track member.id) {
-            <div class="member-circle">
-              <p class="member-circle-text">{{ member.user?.userName?.charAt(0) ?? '?' }}</p>
-            </div>
+            <a
+              class="member-circle member-circle--link"
+              [routerLink]="['/profile', member.userId]"
+              (click)="$event.stopPropagation()"
+              [attr.title]="member.user?.userName ?? 'プロフィール'"
+            >
+              <p class="member-circle-text">{{ avatarLetter(member.user?.userName) }}</p>
+            </a>
           }
         </div>
       </div>
     }
   </header>
 
-  <nav class="display-switch-container" aria-label="表示形式">
-    <button
-      class="display-switch-btn"
-      type="button"
-      [class.active]="tasksService.displayFormat === 'list'"
-      (click)="tasksService.displayFormat = 'list'"
-    >
-      リスト
-    </button>
-    <button
-      class="display-switch-btn"
-      type="button"
-      [class.active]="tasksService.displayFormat === 'board'"
-      (click)="tasksService.displayFormat = 'board'"
-    >
-      ボード
-    </button>
-    <button
-      class="display-switch-btn"
-      type="button"
-      [class.active]="tasksService.displayFormat === 'calendar'"
-      (click)="tasksService.displayFormat = 'calendar'"
-    >
-      カレンダー
-    </button>
-  </nav>
+  @if (teamLoadForbidden()) {
+    <p class="team-forbidden-hint">
+      <a routerLink="/home/teams">チーム一覧に戻る</a>
+    </p>
+  } @else if (team()) {
+    <section class="team-tasks-section" aria-labelledby="team-tasks-heading">
+      <div class="section-head">
+        <h2 id="team-tasks-heading" class="section-title">チームタスク</h2>
+        <p class="section-desc">
+          プロジェクトに属さない、チーム直下の共有タスクです。編集・削除はモーダルから行えます。
+        </p>
+      </div>
 
-  <div class="tasks-tool-row" (click)="$event.stopPropagation()">
-    <button class="add-task-btn" type="button" (click)="openTaskModal('task-add', null)">
-      + タスクを追加
-    </button>
-    <input
-      class="task-search-input"
-      type="text"
-      placeholder="タスクを検索"
-      autocomplete="off"
-      [value]="tasksService.searchQuery()"
-      (input)="tasksService.searchQuery.set($any($event.target).value)"
-      (compositionend)="tasksService.searchQuery.set($any($event.target).value)"
-    />
-    <div class="menu-wrapper" (click)="$event.stopPropagation()">
-      @if (tasksService.displayFormat === 'list') {
-        <button
-          class="toolbar-btn"
-          type="button"
-          [class.active]="isSortMenuOpen"
-          [class.selected]="isSelectedSort"
-          (click)="toggleSortMenu()"
-        >
-          ソート
+      <div class="tasks-tool-row" (click)="$event.stopPropagation()">
+        <button class="add-task-btn" type="button" (click)="openTaskModal('task-add', null)">
+          + タスクを追加
         </button>
-      }
-      @if (tasksService.sortKey !== null) {
-        <button class="clear-btn" type="button" (click)="clearSort()">
-          {{ getSortLabel(tasksService.sortKey) }} ×
-        </button>
-      }
-      @if (isSortMenuOpen) {
-        <div class="dropdown-menu" (click)="$event.stopPropagation()">
-          <button class="menu-item" (click)="selectSort('dueDate')">期日</button>
-          <button class="menu-item" (click)="selectSort('createdAt')">作成日</button>
-          <button class="menu-item" (click)="selectSort('updatedAt')">最終変更日</button>
-        </div>
-      }
-    </div>
-  </div>
-
-  @if (tasksService.displayFormat === 'list') {
-    <!-- リスト -->
-    <div class="list">
-        <div class="task-bulk-bar">
-            <span class="task-bulk-count">{{ selectedTaskIds.length }}件選択中</span>
-            <button class="task-bulk-delete-btn" type="button" (click)="deleteSelectedTask()">
-              選択を削除
+        <div class="menu-wrapper" (click)="$event.stopPropagation()">
+          <button
+            class="toolbar-btn"
+            type="button"
+            [class.active]="isSortMenuOpen"
+            [class.selected]="isSelectedSort"
+            (click)="toggleSortMenu()"
+          >
+            ソート
+          </button>
+          @if (tasksService.sortKey !== null) {
+            <button class="clear-btn" type="button" (click)="clearSort()">
+              {{ getSortLabel(tasksService.sortKey) }} ×
             </button>
-          </div>
-      <div class="task-table-wrapper">
-        <table class="task-table">
-          <thead class="task-table-head">
-            <tr>
-              <th class="task-table-column-checkbox" scope="col" title="一覧の全選択">
-                <input
-                  type="checkbox"
-                  class="task-table-head-checkbox"
-                  [disabled]="deletableDisplayedTasks('notDone').length === 0"
-                  [checked]="isAllDisplayedNotDoneSelected()"
-                  (change)="onToggleSelectAllNotDone($any($event.target).checked)"
-                />
-              </th>
-              <th class="task-table-column-title" scope="col">タスク名</th>
-              <th class="filter-th task-table-column-due-date">
-                <button
-                  class="th-filter-btn"
-                  (click)="$event.stopPropagation(); tasksService.toggleDueDateFilter()"
-                >
-                  期日
-                </button>
-                @if (tasksService.dueDateFilter) {
-                  <button
-                    class="clear-filter-btn"
-                    (click)="$event.stopPropagation(); tasksService.clearDueDateFilter()"
-                  >
-                    <span class="filter-text">{{ tasksService.dueDateFilter }}</span>
-                    <span class="clear-filter-btn-icon">×</span>
-                  </button>
-                }
-                @if (tasksService.isDueDateFilterOpen) {
-                  <div class="th-filter-menu" (click)="$event.stopPropagation()">
-                    <button type="button" (click)="tasksService.selectDueDate(null)">すべて</button>
-                    <button type="button" (click)="tasksService.selectDueDate('今日')">今日</button>
-                    <button type="button" (click)="tasksService.selectDueDate('明日')">明日</button>
-                    <button type="button" (click)="tasksService.selectDueDate('1週間')">1週間</button>
-                    <button type="button" (click)="tasksService.selectDueDate('未設定')">未設定</button>
-                  </div>
-                }
-              </th>
-              <th class="filter-th task-table-column-status">
-                <button
-                  class="th-filter-btn"
-                  (click)="$event.stopPropagation(); tasksService.toggleProgressFilter()"
-                >
-                  進捗
-                </button>
-                @if (tasksService.progressFilter) {
-                  <button
-                    class="clear-filter-btn"
-                    (click)="$event.stopPropagation(); tasksService.clearProgressFilter()"
-                  >
-                    <span class="filter-text">{{ tasksService.progressFilter }}</span>
-                    <span class="clear-filter-btn-icon">×</span>
-                  </button>
-                }
-                @if (tasksService.isProgressFilterOpen) {
-                  <div class="th-filter-menu" (click)="$event.stopPropagation()">
-                    <button type="button" (click)="tasksService.selectProgress(null)">すべて</button>
-                    <button type="button" (click)="tasksService.selectProgress('未着手')">未着手</button>
-                    <button type="button" (click)="tasksService.selectProgress('進行中')">進行中</button>
-                    <button type="button" (click)="tasksService.selectProgress('保留')">保留</button>
-                    <button type="button" (click)="tasksService.selectProgress('完了')">完了</button>
-                  </div>
-                }
-              </th>
-              <th class="filter-th task-table-column-priority">
-                <button
-                  class="th-filter-btn"
-                  (click)="$event.stopPropagation(); tasksService.togglePriorityFilter()"
-                >
-                  優先度
-                </button>
-                @if (tasksService.priorityFilter) {
-                  <button
-                    class="clear-filter-btn"
-                    (click)="$event.stopPropagation(); tasksService.clearPriorityFilter()"
-                  >
-                    <span class="filter-text">{{ tasksService.priorityFilter }}</span>
-                    <span class="clear-filter-btn-icon">×</span>
-                  </button>
-                }
-                @if (tasksService.isPriorityFilterOpen) {
-                  <div class="th-filter-menu" (click)="$event.stopPropagation()">
-                    <button type="button" (click)="tasksService.selectPriority(null)">すべて</button>
-                    <button type="button" (click)="tasksService.selectPriority('高')">高</button>
-                    <button type="button" (click)="tasksService.selectPriority('中')">中</button>
-                    <button type="button" (click)="tasksService.selectPriority('低')">低</button>
-                    <button type="button" (click)="tasksService.selectPriority('未設定')">未設定</button>
-                  </div>
-                }
-              </th>
-              <th class="task-table-column-tags" scope="col">タグ</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (task of displayTasks('notDone'); track task.id) {
-              <tr (click)="openTaskModal('task-edit', task)">
-                <td class="task-table-cell-check" (click)="$event.stopPropagation()">
+          }
+          @if (isSortMenuOpen) {
+            <div class="dropdown-menu" (click)="$event.stopPropagation()">
+              <button type="button" class="menu-item" (click)="selectSort('dueDate')">期日</button>
+              <button type="button" class="menu-item" (click)="selectSort('createdAt')">作成日</button>
+              <button type="button" class="menu-item" (click)="selectSort('updatedAt')">最終変更日</button>
+            </div>
+          }
+        </div>
+        <input
+          class="task-search-input"
+          type="text"
+          placeholder="タスクを検索"
+          autocomplete="off"
+          [value]="tasksService.searchQuery()"
+          (input)="tasksService.searchQuery.set($any($event.target).value)"
+          (compositionend)="tasksService.searchQuery.set($any($event.target).value)"
+        />
+      </div>
+
+      <div class="list">
+        <div class="task-bulk-bar">
+          <span class="task-bulk-count">{{ selectedTaskIds.length }}件選択中</span>
+          <button class="task-bulk-delete-btn" type="button" (click)="deleteSelectedTask()">選択を削除</button>
+        </div>
+
+        <div class="task-table-wrapper">
+          <table class="task-table">
+            <thead class="task-table-head">
+              <tr>
+                <th class="task-table-column-checkbox" scope="col" title="表示中の一覧の全選択">
                   <input
                     type="checkbox"
-                    [disabled]="!isTaskCreatorTask(task)"
-                    [checked]="selectedTaskIds.includes(task.id)"
-                    (change)="onRowCheckboxChange(task.id, $any($event.target).checked)"
+                    class="task-table-head-checkbox"
+                    [disabled]="deletableVisibleTasks().length === 0"
+                    [checked]="isAllVisibleDeletableSelected()"
+                    (change)="onToggleSelectAllVisible($any($event.target).checked)"
                   />
-                </td>
-                <td class="task-table-cell-title">{{ task.title }}</td>
-                <td class="task-table-cell-due">
-                  <span class="task-due-range" [ngClass]="getDueDateStatus(task.dueDate, task.status)"
-                    >{{ task.startDate }} ~ {{ task.dueDate }}</span
+                </th>
+                <th class="task-table-column-title" scope="col">タスク名</th>
+                <th class="task-table-column-assign th-col-plain" scope="col">
+                  <span class="th-col-plain-label">担当者</span>
+                </th>
+                <th class="filter-th task-table-column-due-date">
+                  <button
+                    type="button"
+                    class="th-filter-btn"
+                    (click)="$event.stopPropagation(); tasksService.toggleDueDateFilter()"
+                    [class.active]="tasksService.isDueDateFilterOpen"
                   >
-                </td>
-                <td class="task-table-cell-progress">
-                  <span class="task-pill" [ngClass]="progressPillClass(task.status)">{{ task.status }}</span>
-                </td>
-                <td class="task-table-cell-priority">
-                  <span class="task-pill" [ngClass]="priorityPillClass(task.priority)">{{
-                    task.priority ?? '未設定'
-                  }}</span>
-                </td>
-                <td>
-                  @for (tag of task.tags ?? []; track tag.id) {
-                    <span class="task-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                    期日
+                    <span class="th-filter-btn-icon">▼</span>
+                  </button>
+                  @if (tasksService.dueDateFilter) {
+                    <button
+                      type="button"
+                      class="clear-filter-btn"
+                      (click)="$event.stopPropagation(); tasksService.clearDueDateFilter()"
+                    >
+                      <span class="filter-text">{{ tasksService.dueDateFilter }}</span>
+                      <span class="clear-filter-btn-icon">×</span>
+                    </button>
                   }
-                </td>
+                  @if (tasksService.isDueDateFilterOpen) {
+                    <div class="th-filter-menu" (click)="$event.stopPropagation()">
+                      <button type="button" (click)="tasksService.selectDueDate(null)">すべて</button>
+                      <button type="button" (click)="tasksService.selectDueDate('今日')">今日</button>
+                      <button type="button" (click)="tasksService.selectDueDate('明日')">明日</button>
+                      <button type="button" (click)="tasksService.selectDueDate('1週間')">1週間</button>
+                      <button type="button" (click)="tasksService.selectDueDate('未設定')">未設定</button>
+                    </div>
+                  }
+                </th>
+                <th class="filter-th task-table-column-status">
+                  <button
+                    type="button"
+                    class="th-filter-btn"
+                    (click)="$event.stopPropagation(); tasksService.toggleProgressFilter()"
+                    [class.active]="tasksService.isProgressFilterOpen"
+                  >
+                    進捗
+                    <span class="th-filter-btn-icon">▼</span>
+                  </button>
+                  @if (tasksService.progressFilter) {
+                    <button
+                      type="button"
+                      class="clear-filter-btn"
+                      (click)="$event.stopPropagation(); tasksService.clearProgressFilter()"
+                    >
+                      <span class="filter-text">{{ tasksService.progressFilter }}</span>
+                      <span class="clear-filter-btn-icon">×</span>
+                    </button>
+                  }
+                  @if (tasksService.isProgressFilterOpen) {
+                    <div class="th-filter-menu" (click)="$event.stopPropagation()">
+                      <button type="button" (click)="tasksService.selectProgress(null)">すべて</button>
+                      <button type="button" (click)="tasksService.selectProgress('未着手')">未着手</button>
+                      <button type="button" (click)="tasksService.selectProgress('進行中')">進行中</button>
+                      <button type="button" (click)="tasksService.selectProgress('保留')">保留</button>
+                      <button type="button" (click)="tasksService.selectProgress('完了')">完了</button>
+                    </div>
+                  }
+                </th>
+                <th class="filter-th task-table-column-priority">
+                  <button
+                    type="button"
+                    class="th-filter-btn"
+                    (click)="$event.stopPropagation(); tasksService.togglePriorityFilter()"
+                    [class.active]="tasksService.isPriorityFilterOpen"
+                  >
+                    優先度
+                    <span class="th-filter-btn-icon">▼</span>
+                  </button>
+                  @if (tasksService.priorityFilter) {
+                    <button
+                      type="button"
+                      class="clear-filter-btn"
+                      (click)="$event.stopPropagation(); tasksService.clearPriorityFilter()"
+                    >
+                      <span class="filter-text">{{ tasksService.priorityFilter }}</span>
+                      <span class="clear-filter-btn-icon">×</span>
+                    </button>
+                  }
+                  @if (tasksService.isPriorityFilterOpen) {
+                    <div class="th-filter-menu" (click)="$event.stopPropagation()">
+                      <button type="button" (click)="tasksService.selectPriority(null)">すべて</button>
+                      <button type="button" (click)="tasksService.selectPriority('高')">高</button>
+                      <button type="button" (click)="tasksService.selectPriority('中')">中</button>
+                      <button type="button" (click)="tasksService.selectPriority('低')">低</button>
+                      <button type="button" (click)="tasksService.selectPriority('未設定')">未設定</button>
+                    </div>
+                  }
+                </th>
+                <th class="filter-th task-table-column-tags">
+                  <button
+                    type="button"
+                    class="th-filter-btn"
+                    (click)="$event.stopPropagation(); tasksService.toggleTagsFilter()"
+                    [class.active]="tasksService.isTagsFilterOpen"
+                  >
+                    タグ
+                    <span class="th-filter-btn-icon">▼</span>
+                  </button>
+                  @if (tasksService.tagFilter) {
+                    <button
+                      type="button"
+                      class="clear-filter-btn"
+                      (click)="$event.stopPropagation(); tasksService.clearTagsFilter()"
+                    >
+                      <span class="filter-text">{{ tasksService.tagFilter?.name }}</span>
+                      <span class="clear-filter-btn-icon">×</span>
+                    </button>
+                  }
+                  @if (tasksService.isTagsFilterOpen) {
+                    <div class="th-filter-menu" (click)="$event.stopPropagation()">
+                      <button type="button" (click)="tasksService.selectTags(null)">すべて</button>
+                      @for (tag of tasksService.allTaskTags; track tag.id) {
+                        <button type="button" (click)="tasksService.selectTags(tag)">{{ tag.name }}</button>
+                      }
+                    </div>
+                  }
+                </th>
               </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-
-      <div class="done-task-container">
-        <h3>完了したタスク</h3>
-        @for (task of displayTasks('done'); track task.id) {
-          <div class="done-task-table-wrapper">
-            <table class="task-table">
-              <tbody>
-                <tr (click)="openTaskModal('task-edit', task)">
-                  <td class="task-table-column-title">{{ task.title }}</td>
-                  <td class="task-table-column-tags">
-                    @for (tag of task.tags ?? []; track tag.id) {
-                      <span class="task-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
-                    }
-                  </td>
+            </thead>
+            <tbody>
+              @if (displayTeamTasksForTab().length === 0) {
+                <tr>
+                  <td colspan="7" class="team-empty-row">該当するチームタスクはありません。</td>
                 </tr>
-              </tbody>
-            </table>
-          </div>
-        }
-      </div>
-    </div>
-  } @else if (tasksService.displayFormat === 'board') {
-    <!-- ボード -->
-    <div class="board">
-      <div class="board-columns" cdkDropListGroup>
-        <div
-          class="board-column"
-          id="未着手"
-          cdkDropList
-          cdkDropListSortingDisabled
-          [cdkDropListData]="tasksService.filteredTodoTasks()"
-          (cdkDropListDropped)="dropTask($event)"
-        >
-          <p class="board-column-title">未着手</p>
-          @for (task of tasksService.filteredTodoTasks(); track task.id) {
-            <div class="board-card" cdkDrag [cdkDragDisabled]="!isTaskCreatorTask(task)" (click)="openTaskModal('task-edit', task)">
-              <p class="board-card-title">{{ task.title }}</p>
-            </div>
-          }
-        </div>
-        <div
-          class="board-column"
-          id="進行中"
-          cdkDropList
-          cdkDropListSortingDisabled
-          [cdkDropListData]="tasksService.filteredInProgressTasks()"
-          (cdkDropListDropped)="dropTask($event)"
-        >
-          <p class="board-column-title">進行中</p>
-          @for (task of tasksService.filteredInProgressTasks(); track task.id) {
-            <div class="board-card" cdkDrag [cdkDragDisabled]="!isTaskCreatorTask(task)" (click)="openTaskModal('task-edit', task)">
-              <p class="board-card-title">{{ task.title }}</p>
-            </div>
-          }
-        </div>
-        <div
-          class="board-column"
-          id="保留"
-          cdkDropList
-          cdkDropListSortingDisabled
-          [cdkDropListData]="tasksService.filteredOnHoldTasks()"
-          (cdkDropListDropped)="dropTask($event)"
-        >
-          <p class="board-column-title">保留</p>
-          @for (task of tasksService.filteredOnHoldTasks(); track task.id) {
-            <div class="board-card" cdkDrag [cdkDragDisabled]="!isTaskCreatorTask(task)" (click)="openTaskModal('task-edit', task)">
-              <p class="board-card-title">{{ task.title }}</p>
-            </div>
-          }
-        </div>
-        <div
-          class="board-column"
-          id="完了"
-          cdkDropList
-          cdkDropListSortingDisabled
-          [cdkDropListData]="tasksService.filteredDoneTasks()"
-          (cdkDropListDropped)="dropTask($event)"
-        >
-          <p class="board-column-title">完了</p>
-          @for (task of tasksService.filteredDoneTasks(); track task.id) {
-            <div class="board-card" cdkDrag [cdkDragDisabled]="!isTaskCreatorTask(task)" (click)="openTaskModal('task-edit', task)">
-              <p class="board-card-title">{{ task.title }}</p>
-            </div>
-          }
+              } @else {
+                @for (task of displayTeamTasksForTab(); track task.id) {
+                  <tr (click)="openTaskModal('task-edit', task)">
+                    <td class="task-table-cell-check" (click)="$event.stopPropagation()">
+                      <input
+                        type="checkbox"
+                        [disabled]="!isTaskCreatorTask(task)"
+                        [checked]="selectedTaskIds.includes(task.id)"
+                        (change)="onRowCheckboxChange(task.id, $any($event.target).checked)"
+                      />
+                    </td>
+                    <td class="task-table-cell-title">{{ task.title }}</td>
+                    <td class="task-table-cell-assign" [attr.title]="assigneeName(task)">
+                      {{ assigneeName(task) }}
+                    </td>
+                    <td class="task-table-cell-due">
+                      <span class="task-due-range" [ngClass]="getDueDateStatus(task.dueDate, task.status)">
+                        {{ task.startDate }} ~ {{ task.dueDate }}
+                      </span>
+                    </td>
+                    <td class="task-table-cell-progress">
+                      <span class="task-pill" [ngClass]="progressPillClass(task.status)">{{ task.status }}</span>
+                    </td>
+                    <td class="task-table-cell-priority">
+                      <span class="task-pill" [ngClass]="priorityPillClass(task.priority)">{{
+                        task.priority ?? '未設定'
+                      }}</span>
+                    </td>
+                    <td class="task-table-cell-tags">
+                      @for (tag of task.tags ?? []; track tag.id) {
+                        <span class="task-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              }
+            </tbody>
+          </table>
         </div>
       </div>
-    </div>
-  } @else {
-    <!-- カレンダー -->
-    <div class="calendar-nav">
-      <button class="calendar-btn" type="button" (click)="prevWeek()">前の週</button>
-      <button class="calendar-btn" type="button" (click)="today()">今日</button>
-      <button class="calendar-btn" type="button" (click)="nextWeek()">次の週</button>
-    </div>
-    <div class="calendar-board" [style.min-height.px]="getCalendarBoardMinHeight()">
-      <div class="week-grid">
-        @for (date of weekDates; track date.toISOString()) {
-          <div class="day-column">
-            <div class="day-header">
-              <div class="day-name">{{ getDayName(date) }}</div>
-              <div class="day-number" [class.today-number]="isToday(date)">{{ date.getDate() }}</div>
-            </div>
-            <div class="day-body"></div>
-          </div>
-        }
+    </section>
+
+    <section class="team-projects-section" aria-labelledby="team-projects-heading">
+      <div class="section-head">
+        <h2 id="team-projects-heading" class="section-title">プロジェクト</h2>
+        <p class="section-desc">
+          チームに属するプロジェクト一覧です。タスクの詳細は各プロジェクトの詳細画面で管理します。
+        </p>
       </div>
-      <div class="task-layer">
-        @for (task of sortedWeekTasks(); track task.id) {
-          <button
-            type="button"
-            class="sample-task-bar"
-            (click)="openTaskModal('task-edit', task)"
-            [style.top.px]="getTaskTop(task)"
-            [style.left.%]="getTaskLeftPercent(task)"
-            [style.width.%]="getTaskWidthPercent(task)"
-          >
-            {{ task.title }}
-          </button>
-        }
-      </div>
-    </div>
+      @if (teamProjectCards().length === 0) {
+        <p class="team-empty-hint">このチームに紐づくプロジェクトはまだありません。</p>
+      } @else {
+        <ul class="team-project-list">
+          @for (card of teamProjectCards(); track card.project.id) {
+            <li>
+              @if (card.isProjectMember) {
+                <a
+                  class="team-project-card"
+                  [routerLink]="['/home/projects', card.project.id]"
+                  (click)="$event.stopPropagation()"
+                >
+                  <span class="team-project-card-name">{{ card.project.name }}</span>
+                  <span class="team-project-card-meta">
+                    進行中・未着手等 {{ card.activeRootCount }}件 / 完了 {{ card.completedRootCount }}件 / メンバー
+                    {{ card.memberCount }}人
+                  </span>
+                </a>
+              } @else {
+                <div class="team-project-card team-project-card--nonmember">
+                  <span class="team-project-card-name">{{ card.project.name }}</span>
+                  <span class="team-project-card-meta">
+                    このプロジェクトのメンバーではありません。参加すると課題の一覧と詳細にアクセスできます。
+                  </span>
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
   }
 </div>
 
 <style>
   .tasks-container {
-    padding: 0 20px 24px;
+    padding: 0 20px 32px;
     margin: 0 auto;
+    max-width: 1200px;
     box-sizing: border-box;
   }
   .tasks-header {
@@ -379,6 +346,20 @@
     margin: 0;
     font-size: 20px;
     font-weight: 700;
+  }
+  .tasks-header-sub {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: #555;
+    line-height: 1.45;
+  }
+  .team-forbidden-hint {
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .team-forbidden-hint a {
+    font-weight: 600;
+    color: #2d5a32;
   }
   .team-header-actions {
     display: flex;
@@ -403,8 +384,13 @@
     display: flex;
     align-items: center;
     flex-direction: row-reverse;
-    cursor: pointer;
     padding: 4px 0;
+  }
+  .member-list--clickable {
+    cursor: pointer;
+  }
+  .member-list:not(.member-list--clickable) {
+    cursor: default;
   }
   .member-circle {
     width: 32px;
@@ -427,20 +413,110 @@
     font-size: 13px;
     font-weight: 700;
   }
+  .member-circle--link {
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .member-circle--link:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
 
-  .display-switch-container {
+  .team-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin: 20px 0 8px;
+  }
+  .team-stat-card {
+    background: #f9fafb;
+    border: 1px solid #e0e4e8;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 72px;
+    box-sizing: border-box;
+  }
+  .team-stat-card--accent {
+    border-color: #b8d4b9;
+    background: #f0faf1;
+  }
+  .team-stat-card--warn {
+    border-color: #ffcdd2;
+    background: #fff8f7;
+  }
+  .team-stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    letter-spacing: 0.02em;
+  }
+  .team-stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.2;
+  }
+  .team-stat-hint {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.35;
+  }
+
+  .team-tasks-section,
+  .team-projects-section {
+    margin-top: 28px;
+  }
+  .section-head {
+    margin-bottom: 14px;
+  }
+  .section-title {
+    margin: 0 0 6px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1e3112;
+  }
+  .section-desc {
+    margin: 0;
+    font-size: 13px;
+    color: #5c5c5c;
+    line-height: 1.55;
+    max-width: 720px;
+  }
+
+  .team-task-tabs {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 16px 0;
-    box-sizing: border-box;
+    margin-bottom: 14px;
   }
+  .team-task-tab {
+    padding: 8px 16px;
+    border: 1px solid #c8ccc9;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    cursor: pointer;
+  }
+  .team-task-tab:hover {
+    background: #f3f5f7;
+  }
+  .team-task-tab.active {
+    background: #1b5214;
+    color: #fff;
+    border-color: #1b5214;
+  }
+
   .tasks-tool-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
   .add-task-btn {
     padding: 8px 16px;
@@ -471,32 +547,6 @@
     background: #fff;
   }
 
-  .list {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-    overflow: visible;
-    box-sizing: border-box;
-  }
-  .display-switch-btn {
-    padding: 8px 14px;
-    border: 1px solid #c8ccc9;
-    background: #f9fafb;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-    color: #333;
-  }
-  .display-switch-btn:hover {
-    background-color: #ebf1ee;
-  }
-  .display-switch-btn.active {
-    border-color: #1e3112;
-    background: #ebf1ee;
-    font-weight: 600;
-  }
-
-  /* メニュー */
   .menu-wrapper {
     position: relative;
     display: inline-block;
@@ -504,9 +554,9 @@
   .toolbar-btn,
   .clear-btn {
     height: 30px;
-    border: none;
+    border: 1px solid #c8ccc9;
     background: transparent;
-    border-radius: 4px;
+    border-radius: 8px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -523,9 +573,14 @@
   }
   .toolbar-btn:hover {
     background: #ebf1ee;
+    border-color: black;
   }
   .toolbar-btn.active {
     background: #ebf1ee;
+    border-color: black;
+  }
+  .toolbar-btn.selected {
+    font-weight: 600;
   }
   .dropdown-menu {
     position: absolute;
@@ -552,9 +607,16 @@
     background: #f5f5f5;
   }
 
-  /* リスト */
-  .task-table-wrapper,
-  .done-task-table-wrapper {
+  /* プロジェクト詳細のリストと同じ（フィルターメニューがクリップされない） */
+  .list {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: visible;
+    box-sizing: border-box;
+  }
+
+  .task-table-wrapper {
     width: 100%;
     height: 100%;
     min-height: 0;
@@ -564,6 +626,69 @@
     border-radius: 8px;
     box-shadow: none;
   }
+  .team-empty-hint {
+    margin: 0;
+    padding: 20px 16px;
+    font-size: 14px;
+    color: #6b7280;
+    text-align: center;
+  }
+  .team-empty-row {
+    text-align: center;
+    color: #6b7280;
+    font-size: 14px;
+    padding: 28px 16px !important;
+    cursor: default;
+  }
+
+  .team-project-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .team-project-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 14px 16px;
+    border: 1px solid #e0e4e8;
+    border-radius: 10px;
+    background: #fff;
+    text-decoration: none;
+    color: inherit;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  a.team-project-card:hover {
+    border-color: #4ea356;
+    box-shadow: 0 4px 14px rgba(27, 82, 20, 0.1);
+  }
+  .team-project-card--nonmember {
+    cursor: default;
+    background: #fafafa;
+    border-style: dashed;
+    color: #555;
+  }
+  .team-project-card--nonmember:hover {
+    border-color: #d5d5d5;
+    box-shadow: none;
+  }
+  .team-project-card-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a1a1a;
+  }
+  .team-project-card-meta {
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.45;
+  }
+
   .task-table {
     width: 100%;
     border-collapse: separate;
@@ -606,7 +731,13 @@
     border-radius: 4px;
   }
   .th-filter-btn:hover {
-    background-color: #f0f0f0;
+    background-color: #bebebe;
+  }
+  .th-filter-btn.active {
+    background-color: #bebebe;
+  }
+  .th-filter-btn-icon {
+    font-size: 10px;
   }
   .filter-text {
     font-size: 12px;
@@ -628,7 +759,7 @@
     position: absolute;
     top: 100%;
     left: 0;
-    z-index: 100;
+    z-index: 120;
     background: white;
     border: 1px solid #ddd;
     border-radius: 6px;
@@ -655,6 +786,29 @@
     max-width: 40%;
     overflow: hidden;
   }
+  .th-col-plain {
+    vertical-align: middle;
+  }
+  .th-col-plain-label {
+    display: inline-block;
+    padding: 2px 0;
+    font-weight: 600;
+    color: #5c5c5c;
+    letter-spacing: 0.02em;
+  }
+  .task-table-column-assign {
+    width: 11%;
+    min-width: 100px;
+    max-width: 160px;
+  }
+  .task-table-cell-assign {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: #3d3d3d;
+  }
   .task-table-column-due-date {
     min-width: 180px;
     width: 22%;
@@ -668,12 +822,14 @@
   .task-table-column-tags {
     width: 200px;
   }
-  .task-table-column-checkbox {
+  .task-table thead th.task-table-column-checkbox {
     width: 44px;
+    max-width: 44px;
+    padding: 10px 8px;
+    overflow: visible;
     text-align: center;
     vertical-align: middle;
-    padding-left: 8px;
-    padding-right: 8px;
+    box-sizing: border-box;
   }
   .task-table-head-checkbox {
     width: 16px;
@@ -681,11 +837,13 @@
     cursor: pointer;
     vertical-align: middle;
   }
-  .task-table-cell-check {
+  .task-table tbody td.task-table-cell-check {
     width: 44px;
+    max-width: 44px;
+    padding: 10px 8px;
     text-align: center;
     vertical-align: middle;
-    padding: 10px 8px;
+    box-sizing: border-box;
   }
   .task-table-cell-check input {
     width: 16px;
@@ -738,14 +896,19 @@
     border-right: none;
     vertical-align: middle;
   }
-  .done-task-container {
-    display: flex;
-    flex-direction: column;
-  }
   .task-table-cell-due,
   .task-table-cell-progress,
   .task-table-cell-priority {
     white-space: nowrap;
+  }
+  .task-table-cell-tags {
+    white-space: normal;
+    overflow: hidden;
+    vertical-align: middle;
+  }
+  .task-table-cell-tags .task-pill {
+    margin: 2px 4px 2px 0;
+    vertical-align: middle;
   }
   .task-due-range {
     display: inline-block;
@@ -868,221 +1031,5 @@
     background: #eceff1;
     color: #455a64;
     border-color: #cfd8dc;
-  }
-
-  /* ボード */
-  .board {
-    flex: 1;
-    min-height: 0;
-    min-width: 0;
-    width: 100%;
-    box-sizing: border-box;
-    overflow-x: auto;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 12px 4px 16px;
-    background: #f0f3f1;
-    border-radius: 10px;
-    border: 1px solid #e8e8e8;
-  }
-  .board-columns {
-    display: flex;
-    gap: 14px;
-    align-items: stretch;
-    width: max-content;
-    min-height: min(360px, 55vh);
-    padding: 4px 12px 8px;
-    box-sizing: border-box;
-  }
-  .board-column {
-    width: 272px;
-    flex: 0 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 12px 10px 14px;
-    background: #e4e9e5;
-    border-radius: 12px;
-    border: 1px solid #d5dcd6;
-    box-sizing: border-box;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  }
-  .board-column-title {
-    margin: 0 0 4px;
-    padding: 6px 4px 10px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    color: #3d523f;
-    border-bottom: 1px solid #c9d1ca;
-    box-sizing: border-box;
-    background: transparent;
-    border-radius: 0;
-  }
-  .board-card {
-    cursor: pointer;
-    padding: 12px 12px;
-    background: #fff;
-    border: 1px solid #e0e4e8;
-    border-radius: 10px;
-    box-sizing: border-box;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-    transition: box-shadow 0.15s ease, border-color 0.15s ease;
-  }
-  .board-card:hover {
-    border-color: #b8c9b9;
-    box-shadow: 0 4px 14px rgba(27, 82, 20, 0.12);
-    transform: translateY(-1px);
-  }
-  .board-card:active {
-    transform: translateY(0);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  }
-  .board-card.cdk-drag-preview {
-    opacity: 0.85;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
-  }
-  .board-card.cdk-drag-placeholder {
-    opacity: 0.25;
-  }
-  .board-card-title {
-    font-size: 14px;
-    line-height: 1.45;
-    margin: 0;
-    color: #1a1a1a;
-    line-clamp: 4;
-    overflow: hidden;
-  }
-
-  /* カレンダー */
-  .calendar-nav {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-  .calendar-btn {
-    font-size: 13px;
-    font-weight: 500;
-    padding: 8px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    border: 1px solid #ddd;
-    background: #fff;
-    color: #333;
-  }
-  .calendar-btn:hover {
-    background: #f5f5f5;
-    border-color: #ccc;
-  }
-  .calendar-nav .calendar-btn:nth-child(2) {
-    background: #4ea356;
-    color: #fff;
-    border-color: #4ea356;
-  }
-  .calendar-nav .calendar-btn:nth-child(2):hover {
-    background: #255c2b;
-    border-color: #255c2b;
-  }
-  .calendar-board {
-    position: relative;
-    background: #fff;
-    border-radius: 8px;
-    border: 1px solid #e0e0e0;
-    overflow-x: auto;
-    overflow-y: visible;
-  }
-  .week-grid {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    width: 100%;
-    background: #fff;
-    align-items: stretch;
-  }
-  .day-column {
-    min-width: 0;
-    min-height: 0;
-    border-right: 1px solid #eee;
-    display: flex;
-    flex-direction: column;
-  }
-  .day-column:last-child {
-    border-right: none;
-  }
-  .day-header {
-    min-height: 64px;
-    padding: 8px 4px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    border-bottom: 1px solid #eee;
-    background: #fafafa;
-    box-sizing: border-box;
-  }
-  .day-name {
-    font-size: 12px;
-    font-weight: 500;
-    color: #888;
-  }
-  .day-number {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.75rem;
-    height: 1.75rem;
-    padding: 0 4px;
-    border-radius: 4px;
-    font-size: 14px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: #222;
-  }
-  .today-number {
-    color: #fff;
-    background: #1b5214;
-  }
-  .day-body {
-    flex: 1;
-    min-height: 0;
-    padding: 0;
-    position: relative;
-    background: #fff;
-  }
-  .task-layer {
-    position: absolute;
-    top: 65px;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    cursor: default;
-    min-height: 0;
-    padding: 6px 4px 10px;
-    box-sizing: border-box;
-    pointer-events: none;
-  }
-  .sample-task-bar {
-    pointer-events: auto;
-    cursor: pointer;
-    position: absolute;
-    height: 36px;
-    background: #f0e6a8;
-    display: flex;
-    align-items: center;
-    padding: 0 10px;
-    box-sizing: border-box;
-    border-radius: 4px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-size: 13px;
-    font-weight: 500;
-    color: #333;
-    border: 1px solid #ddd4a0;
-  }
-  .sample-task-bar:hover {
-    filter: brightness(0.97);
   }
 </style>

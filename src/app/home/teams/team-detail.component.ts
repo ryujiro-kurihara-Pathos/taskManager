@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
     Component,
     HostListener,
@@ -8,14 +7,21 @@ import {
     OnInit,
     inject,
     signal,
+    computed,
 } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { ModalService } from '../../services/modal.service';
 import { TasksService } from '../../services/tasks.service';
 import { AuthStateService } from '../../services/auth-state.service';
-import { SortKey, Task, AddTaskInput } from '../../types/task';
+import { SortKey, Tag, Task } from '../../types/task';
 import { Team, TeamMember } from '../../types/team';
 import { isTaskCreator } from '../../utils/task-permissions';
+import { userAvatarInitial } from '../../utils/user-avatar';
+import {
+    canEditTeamBasics,
+    canManageTeamMembers,
+    canViewTeam,
+} from '../../utils/member-permissions';
 import {
     deleteChildrenTask,
     getTeamById,
@@ -23,16 +29,43 @@ import {
     getTasksByTeamId,
     getUser,
     updateTask,
+    getProjectsByTeamId,
+    getTasksByProjectId,
+    getProjectMembers,
+    getTags,
 } from '../../firestore';
+import { Project } from '../../types/project';
+import { ConfirmDialogService } from '../../services/confirm-dialog.service';
+
+export type TeamDetailTaskTab = 'all' | 'active' | 'done' | 'overdue';
+
+export type TeamProjectCardView = {
+    project: Project;
+    activeRootCount: number;
+    completedRootCount: number;
+    memberCount: number;
+    /** 現在ユーザーが projectMembers に含まれる場合のみタスク件数を取得済み */
+    isProjectMember: boolean;
+};
+
+function isTaskOverdue(task: Task): boolean {
+    if (task.status === '完了' || !task.dueDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(task.dueDate);
+    due.setHours(0, 0, 0, 0);
+    return due.getTime() < today.getTime();
+}
 
 @Component({
     selector: 'app-team-detail',
     templateUrl: './team-detail.component.html',
     standalone: true,
-    imports: [CommonModule, DragDropModule],
+    imports: [CommonModule, RouterLink],
 })
 export class TeamDetailComponent implements OnInit, OnDestroy {
     private route = inject(ActivatedRoute);
+    private confirmDialog = inject(ConfirmDialogService);
     private modalService = inject(ModalService);
 
     tasksService = inject(TasksService);
@@ -41,38 +74,86 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
     teamId = signal<string>('');
     team = signal<Team | null | undefined>(undefined);
     teamMembers = signal<TeamMember[]>([]);
+    /** teamMembers に自分がいない（URL を知っている第三者など） */
+    teamLoadForbidden = signal(false);
+
+    /** チーム直下タスクの表示タブ */
+    teamTaskTab = signal<TeamDetailTaskTab>('all');
+
+    teamProjectCards = signal<TeamProjectCardView[]>([]);
 
     selectedTaskIds: string[] = [];
 
-    // カレンダー
-    weekDates: Date[] = [];
-    currentDate = new Date();
-    /** ガント行の高さ（getTaskTop と一致） */
-    readonly calendarRowHeightPx = 48;
-    /** ヘッダー列（曜日・日付）の下からタスク層までのオフセット（template の .task-layer top と一致） */
-    readonly calendarHeaderBandPx = 65;
+    avatarLetter(name: string | null | undefined): string {
+        return userAvatarInitial(name);
+    }
 
-    private teamEditModalWasOpen = false;
     private modalSub?: Subscription;
+    private lastModalState: { isOpen: boolean; type: string | null } = {
+        isOpen: false,
+        type: null,
+    };
 
-    // メニュー
-    isSortMenuOpen: boolean = false;
-    isFilterMenuOpen: boolean = false;
-    isSelectedSort: boolean = false;
+    isSortMenuOpen = false;
+    isFilterMenuOpen = false;
+    isSelectedSort = false;
+
+    /** チーム直下タスクの件数（一覧と同期） */
+    /** チーム編集モーダルを開けるのはオーナーまたは admin（member は閲覧のみ） */
+    canOpenTeamSettingsModal = computed(() => {
+        const t = this.team();
+        if (!t) return false;
+        const uid = this.authState.uid;
+        return (
+            canEditTeamBasics(t, this.teamMembers(), uid) ||
+            canManageTeamMembers(t, this.teamMembers(), uid)
+        );
+    });
+
+    teamTaskOverview = computed(() => {
+        const tasks = this.tasksService.tasks();
+        let active = 0;
+        let done = 0;
+        let overdue = 0;
+        for (const t of tasks) {
+            if (t.status === '完了') {
+                done++;
+                continue;
+            }
+            if (isTaskOverdue(t)) overdue++;
+            else active++;
+        }
+        return {
+            total: tasks.length,
+            active,
+            done,
+            overdue,
+        };
+    });
 
     async ngOnInit() {
-        this.weekDates = this.getWeekDates(this.currentDate);
-
         const teamId = this.route.snapshot.paramMap.get('teamId');
         if (!teamId) return;
         this.teamId.set(teamId);
 
         const teamData = await getTeamById(teamId);
-        this.team.set(teamData);
+        if (!teamData) {
+            this.team.set(null);
+            return;
+        }
 
         const members = await getTeamMembersByTeamId(teamId);
         await this.enrichMemberUsers(members);
         this.teamMembers.set(members);
+
+        const uid = this.authState.uid;
+        if (!canViewTeam(members, uid)) {
+            this.teamLoadForbidden.set(true);
+            this.team.set(null);
+            return;
+        }
+
+        this.team.set(teamData);
 
         const tasks = await getTasksByTeamId(teamId);
         await this.tasksService.loadTaskTags(tasks);
@@ -81,18 +162,55 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         this.tasksService.searchQuery.set('');
         this.tasksService.closeAllFilterMenus();
         this.tasksService.sortKey = null;
+        this.tasksService.allTaskTags = (await getTags(this.authState.uid)) as Tag[];
+
+        await this.loadTeamProjectCards(teamId);
 
         this.modalSub = this.modalService.modalState$.subscribe((s) => {
-            const closingTeamEdit = this.teamEditModalWasOpen && !s.isOpen;
-            this.teamEditModalWasOpen = !!(s.isOpen && s.type === 'team-edit');
-            if (closingTeamEdit) {
-                void this.reloadTeamSnapshot();
+            const prev = this.lastModalState;
+            const closing = prev.isOpen && !s.isOpen;
+            if (closing) {
+                if (prev.type === 'task-add' || prev.type === 'task-edit') {
+                    void this.reloadTeamTasksAndProjects();
+                }
+                if (prev.type === 'team-edit') {
+                    void this.reloadTeamSnapshot();
+                }
             }
+            this.lastModalState = { isOpen: s.isOpen, type: s.type };
         });
     }
 
-    ngOnDestroy(): void {
+    ngOnDestroy() {
         this.modalSub?.unsubscribe();
+        this.tasksService.setTaskListContextMain();
+    }
+
+    setTeamTaskTab(tab: TeamDetailTaskTab) {
+        this.teamTaskTab.set(tab);
+        this.selectedTaskIds = [];
+    }
+
+    /** パイプライン適用後の一覧をタブで絞り込み */
+    displayTeamTasksForTab(): Task[] {
+        const base = this.tasksService.getDisplayTasks(null);
+        switch (this.teamTaskTab()) {
+            case 'all':
+                return base;
+            case 'done':
+                return base.filter((t) => t.status === '完了');
+            case 'overdue':
+                return base.filter((t) => t.status !== '完了' && isTaskOverdue(t));
+            case 'active':
+                return base.filter((t) => t.status !== '完了' && !isTaskOverdue(t));
+            default:
+                return base;
+        }
+    }
+
+    /** 一括操作の対象（作成者のみ・現在タブの表示中） */
+    deletableVisibleTasks(): Task[] {
+        return this.displayTeamTasksForTab().filter((t) => this.isTaskCreatorTask(t));
     }
 
     private async enrichMemberUsers(members: TeamMember[]): Promise<void> {
@@ -105,7 +223,6 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         );
     }
 
-    /** チーム編集モーダル保存・閉じたあとにヘッダー名などを同期 */
     private async reloadTeamSnapshot(): Promise<void> {
         const id = this.teamId();
         if (!id) return;
@@ -116,57 +233,84 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         this.teamMembers.set(members);
     }
 
+    private async reloadTeamTasksAndProjects(): Promise<void> {
+        const id = this.teamId();
+        if (!id) return;
+        const tasks = await getTasksByTeamId(id);
+        await this.tasksService.loadTaskTags(tasks);
+        this.tasksService.setTasks(tasks);
+        this.tasksService.allTaskTags = (await getTags(this.authState.uid)) as Tag[];
+        await this.loadTeamProjectCards(id);
+    }
+
+    private async loadTeamProjectCards(teamId: string): Promise<void> {
+        try {
+            const uid = this.authState.uid;
+            const projects = await getProjectsByTeamId(teamId);
+            const cards = await Promise.all(
+                projects.map(async (project) => {
+                    const members = await getProjectMembers(project.id);
+                    const isProjectMember = members.some((m) => m.userId === uid);
+                    if (!isProjectMember) {
+                        return {
+                            project,
+                            activeRootCount: 0,
+                            completedRootCount: 0,
+                            memberCount: members.length,
+                            isProjectMember: false,
+                        } satisfies TeamProjectCardView;
+                    }
+                    const tasks = await getTasksByProjectId(project.id);
+                    const roots = tasks.filter((t) => t.parentTaskId == null);
+                    const activeRootCount = roots.filter((t) => t.status !== '完了').length;
+                    const completedRootCount = roots.filter((t) => t.status === '完了').length;
+                    return {
+                        project,
+                        activeRootCount,
+                        completedRootCount,
+                        memberCount: members.length,
+                        isProjectMember: true,
+                    } satisfies TeamProjectCardView;
+                }),
+            );
+            this.teamProjectCards.set(cards);
+        } catch (e) {
+            console.error('チームプロジェクト概要の取得に失敗しました', e);
+            this.teamProjectCards.set([]);
+        }
+    }
+
     openTeamEditModal(team: Team) {
-        this.modalService.open('team-edit', { ...team });
+        if (!this.canOpenTeamSettingsModal()) return;
+        this.modalService.open('team-edit', {
+            ...team,
+            teamMembers: this.teamMembers(),
+        });
     }
 
-    openTeamMemberDetailModal(members: TeamMember[]) {
-        this.modalService.open('team-member-detail', members);
-    }
-
-    openTaskModal(type: 'task-edit' | 'task-add', task: any) {
+    openTaskModal(type: 'task-edit' | 'task-add', task: Task | null) {
         if (type === 'task-add') {
             this.modalService.open('task-add', { id: this.teamId(), scope: 'team' });
             return;
         }
-        this.modalService.open('task-edit', task);
+        if (task) {
+            this.modalService.open('task-edit', task);
+        }
     }
 
     isTaskCreatorTask(task: Task): boolean {
         return isTaskCreator(task, this.authState.uid);
     }
 
-    deletableDisplayedTasks(status: 'notDone' | 'done'): Task[] {
-        return this.displayTasks(status).filter((t) => this.isTaskCreatorTask(t));
-    }
-
-    async dropTask(event: CdkDragDrop<Task[]>) {
-        if (event.previousContainer === event.container) {
-            return;
-        }
-        const movedTask = event.previousContainer.data[event.previousIndex];
-        if (!this.isTaskCreatorTask(movedTask)) {
-            return;
-        }
-        const newStatus = event.container.id as Task['status'];
-
-        this.tasksService.tasks.update((tasks) =>
-            tasks.map((t) => (t.id === movedTask.id ? { ...t, status: newStatus } : t)),
-        );
-
-        try {
-            const inputTask: AddTaskInput = {
-                ...movedTask,
-                status: newStatus,
-            };
-            await updateTask(movedTask.id, inputTask);
-        } catch (error) {
-            console.error('タスクステータス更新失敗: ', error);
-        }
-    }
-
-    tagPillClass(color: string): string {
-        return `task-pill task-pill--tag-${color}`;
+    /** 担当者列: assignedUid と assignableUsers / チームメンバーから表示名を解決 */
+    assigneeName(task: Task): string {
+        if (!task.assignedUid) return '未設定';
+        const uid = task.assignedUid;
+        const fromAssignable = task.assignableUsers?.find((u) => u.id === uid);
+        if (fromAssignable?.userName) return fromAssignable.userName;
+        const member = this.teamMembers().find((m) => m.userId === uid);
+        if (member?.user?.userName) return member.user.userName;
+        return '未設定';
     }
 
     onRowCheckboxChange(taskId: string, checked: boolean) {
@@ -181,13 +325,13 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         }
     }
 
-    isAllDisplayedNotDoneSelected(): boolean {
-        const tasks = this.deletableDisplayedTasks('notDone');
+    isAllVisibleDeletableSelected(): boolean {
+        const tasks = this.deletableVisibleTasks();
         return tasks.length > 0 && tasks.every((t) => this.selectedTaskIds.includes(t.id));
     }
 
-    onToggleSelectAllNotDone(checked: boolean) {
-        const ids = this.deletableDisplayedTasks('notDone').map((t) => t.id);
+    onToggleSelectAllVisible(checked: boolean) {
+        const ids = this.deletableVisibleTasks().map((t) => t.id);
         if (checked) {
             this.selectedTaskIds = [...new Set([...this.selectedTaskIds, ...ids])];
         } else {
@@ -211,7 +355,10 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         if (allowed.length < allIds.length) {
             window.alert('作成者のみ削除できるため、該当する課題のみ削除します。');
         }
-        const ok = window.confirm(`選択中のうち、削除できる${allowed.length}件のタスクを削除しますか？`);
+        const ok = await this.confirmDialog.confirm({
+            title: '選択した課題を削除しますか？',
+            message: `削除できる ${allowed.length} 件の課題を完全に削除します。子タスクやコメントも失われます。よろしいですか？`,
+        });
         if (!ok) return;
 
         try {
@@ -223,10 +370,6 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         } catch (error) {
             console.error('タスク一括削除失敗: ', error);
         }
-    }
-
-    displayTasks(status: 'notDone' | 'done') {
-        return this.tasksService.getDisplayTasks(status);
     }
 
     toggleSortMenu() {
@@ -278,7 +421,6 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         }
     }
 
-    // 期限の状態を取得
     getDueDateStatus(dueDate: string | null, taskStatus: string) {
         if (taskStatus === '完了') return '';
         if (!dueDate) return '';
@@ -296,7 +438,6 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         return '';
     }
 
-    /** 進捗セル用ピル */
     progressPillClass(status: string): string {
         switch (status) {
             case '未着手':
@@ -312,7 +453,6 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         }
     }
 
-    /** 優先度セル用ピル */
     priorityPillClass(priority: string | null): string {
         if (priority === '高') return 'task-pill task-pill--pri-high';
         if (priority === '中') return 'task-pill task-pill--pri-medium';
@@ -320,125 +460,7 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         return 'task-pill task-pill--pri-none';
     }
 
-    // カレンダー
-    getWeekDates(baseDate: Date): Date[] {
-        const date = new Date(baseDate);
-        const day = date.getDay();
-        date.setDate(date.getDate() - day);
-
-        const dates: Date[] = [];
-        for (let i = 0; i < 7; i++) {
-            const d = new Date(date);
-            d.setDate(date.getDate() + i);
-            dates.push(d);
-        }
-        return dates;
-    }
-
-    getDayName(date: Date): string {
-        const days = ['月', '火', '水', '木', '金', '土', '日'];
-        return days[date.getDay()];
-    }
-
-    prevWeek() {
-        const newDate = new Date(this.currentDate);
-        newDate.setDate(newDate.getDate() - 7);
-        this.currentDate = newDate;
-        this.weekDates = this.getWeekDates(this.currentDate);
-    }
-
-    nextWeek() {
-        const newDate = new Date(this.currentDate);
-        newDate.setDate(newDate.getDate() + 7);
-        this.currentDate = newDate;
-        this.weekDates = this.getWeekDates(this.currentDate);
-    }
-
-    today() {
-        const newDate = new Date();
-        this.currentDate = newDate;
-        this.weekDates = this.getWeekDates(this.currentDate);
-    }
-
-    isToday(date: Date): boolean {
-        const today = new Date();
-        return (
-            date.getFullYear() === today.getFullYear() &&
-            date.getMonth() === today.getMonth() &&
-            date.getDate() === today.getDate()
-        );
-    }
-
-    formatDate(date: Date): string {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
-
-    getWeekTasks(): Task[] {
-        if (this.weekDates.length === 0) return [];
-        const weekStart = this.formatDate(this.weekDates[0]);
-        const weekEnd = this.formatDate(this.weekDates[6]);
-        return this.tasksService.tasks().filter((task) => {
-            if (!task.startDate || !task.dueDate) return false;
-            return task.startDate <= weekEnd && task.dueDate >= weekStart;
-        });
-    }
-
-    getCalendarWeekTasks(): Task[] {
-        const displayedIds = new Set(this.displayTasks('notDone').map((t) => t.id));
-        return this.getWeekTasks().filter((t) => displayedIds.has(t.id));
-    }
-
-    getTaskStartIndex(task: Task): number {
-        if (!task.startDate) return 0;
-        const weekStart = this.formatDate(this.weekDates[0]);
-        if (task.startDate <= weekStart) return 0;
-        return this.weekDates.findIndex((date) => this.formatDate(date) === task.startDate);
-    }
-
-    getTaskLeftPercent(task: Task): number {
-        return (this.getTaskStartIndex(task) / 7) * 100;
-    }
-
-    getTaskEndIndex(task: Task): number {
-        if (!task.dueDate) return 0;
-        const weekEnd = this.formatDate(this.weekDates[6]);
-        if (task.dueDate >= weekEnd) return 6;
-        return this.weekDates.findIndex((date) => this.formatDate(date) === task.dueDate);
-    }
-
-    getTaskWidthPercent(task: Task): number {
-        const startIndex = this.getTaskStartIndex(task);
-        const endIndex = this.getTaskEndIndex(task);
-        return ((endIndex - startIndex + 1) / 7) * 100;
-    }
-
-    sortedWeekTasks(): Task[] {
-        return [...this.getCalendarWeekTasks()].sort((a, b) => {
-            if (a.startDate && b.startDate && a.startDate !== b.startDate) {
-                return a.startDate.localeCompare(b.startDate);
-            }
-            if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) {
-                return a.dueDate.localeCompare(b.dueDate);
-            }
-            return a.id.localeCompare(b.id);
-        });
-    }
-
-    getTaskRow(task: { id: string }) {
-        return this.sortedWeekTasks().findIndex((t) => t.id === task.id);
-    }
-
-    getTaskTop(task: { id: string }) {
-        return this.getTaskRow(task) * this.calendarRowHeightPx;
-    }
-
-    getCalendarBoardMinHeight(): number {
-        const rows = this.sortedWeekTasks().length;
-        const taskBand = rows * this.calendarRowHeightPx + 24;
-        const bodyFloor = 220;
-        return Math.max(320, this.calendarHeaderBandPx + Math.max(bodyFloor, taskBand));
+    tagPillClass(color: string): string {
+        return `task-pill task-pill--tag-${color}`;
     }
 }

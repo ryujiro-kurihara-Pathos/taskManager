@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { AuthStateService } from '../../services/auth-state.service';
+import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { AuthService } from '../../services/auth.service';
 import {
   getPersonalInboxTasks,
@@ -61,6 +62,7 @@ export class GoalComponent implements OnInit {
   private authState = inject(AuthStateService);
   private authService = inject(AuthService);
   private route = inject(ActivatedRoute);
+  private confirmDialog = inject(ConfirmDialogService);
 
   readonly tabs: { id: GoalScope; label: string }[] = [
     { id: 'personal', label: '個人目標' },
@@ -82,6 +84,9 @@ export class GoalComponent implements OnInit {
   /** 詳細モーダル用（表示時計算） */
   detailProgressPercent = signal<number | null>(null);
   detailLinkedTasks = signal<TaskWithGoal[]>([]);
+
+  /** 一覧カード用: goalId → 関連タスクに基づく完了率（0–100） */
+  goalListProgressPercent = signal<Record<string, number>>({});
 
   /** 新規作成フォーム */
   newGoal: Partial<Goal> = {
@@ -113,6 +118,7 @@ export class GoalComponent implements OnInit {
         this.goals.set([]);
         this.myProjects.set([]);
         this.myTeams.set([]);
+        this.goalListProgressPercent.set({});
         return;
       }
       void this.reloadAll(user.uid).then(() => void this.applyGoalRouteParams());
@@ -235,11 +241,130 @@ export class GoalComponent implements OnInit {
     const byId = new Map<string, Goal>();
     for (const g of collected) byId.set(g.id, g);
     this.goals.set([...byId.values()]);
+    void this.refreshAllGoalListProgress();
+  }
+
+  /** 一覧に表示する進捗（未取得の間は null） */
+  goalListProgressFor(goalId: string): number | null {
+    const m = this.goalListProgressPercent();
+    return Object.prototype.hasOwnProperty.call(m, goalId) ? m[goalId]! : null;
+  }
+
+  private tasksToLinkedProgressPercent(tasks: TaskWithGoal[]): number {
+    if (tasks.length === 0) return 0;
+    const done = tasks.filter((t) => t.status === '完了').length;
+    return Math.round((100 * done) / tasks.length);
+  }
+
+  private async refreshAllGoalListProgress(): Promise<void> {
+    const ids = this.goals().map((g) => g.id);
+    if (ids.length === 0) {
+      this.goalListProgressPercent.set({});
+      return;
+    }
+    const newMap: Record<string, number> = {};
+    const CHUNK = 30;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      const snap = await getDocs(
+        query(collection(db, 'tasks'), where('goalId', 'in', chunk)),
+      );
+      const groups = new Map<string, TaskWithGoal[]>();
+      for (const id of chunk) groups.set(id, []);
+      snap.forEach((d) => {
+        const t = { id: d.id, ...(d.data() as object) } as TaskWithGoal;
+        const gid = t.goalId;
+        if (gid && groups.has(gid)) groups.get(gid)!.push(t);
+      });
+      for (const id of chunk) {
+        newMap[id] = this.tasksToLinkedProgressPercent(groups.get(id) ?? []);
+      }
+    }
+    this.goalListProgressPercent.set(newMap);
+  }
+
+  private async refreshGoalListProgressForIds(goalIds: string[]): Promise<void> {
+    const uniq = [...new Set(goalIds)].filter(Boolean);
+    if (uniq.length === 0) return;
+    const partial: Record<string, number> = {};
+    const CHUNK = 30;
+    for (let i = 0; i < uniq.length; i += CHUNK) {
+      const chunk = uniq.slice(i, i + CHUNK);
+      const snap = await getDocs(
+        query(collection(db, 'tasks'), where('goalId', 'in', chunk)),
+      );
+      const groups = new Map<string, TaskWithGoal[]>();
+      for (const id of chunk) groups.set(id, []);
+      snap.forEach((d) => {
+        const t = { id: d.id, ...(d.data() as object) } as TaskWithGoal;
+        const gid = t.goalId;
+        if (gid && groups.has(gid)) groups.get(gid)!.push(t);
+      });
+      for (const id of chunk) {
+        partial[id] = this.tasksToLinkedProgressPercent(groups.get(id) ?? []);
+      }
+    }
+    this.goalListProgressPercent.update((prev) => ({ ...prev, ...partial }));
   }
 
   filteredGoals(): Goal[] {
     const tab = this.activeTab();
-    return this.goals().filter((g) => g.scope === tab);
+    return this.goals()
+      .filter((g) => g.scope === tab && this.canView(g))
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt || b.createdAt).getTime() -
+          new Date(a.updatedAt || a.createdAt).getTime(),
+      );
+  }
+
+  /** 一覧用: 説明の先頭を短く */
+  goalDescriptionPreview(goal: Goal, maxLen = 96): string {
+    const raw = (goal.description ?? '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '説明はまだありません';
+    return raw.length > maxLen ? `${raw.slice(0, maxLen)}…` : raw;
+  }
+
+  /** yyyy-mm-dd 表示 */
+  formatGoalDateShort(iso: string | null | undefined): string {
+    if (!iso) return '—';
+    const s = String(iso);
+    return s.length >= 10 ? s.slice(0, 10) : s;
+  }
+
+  /** 個人 / プロジェクト名 / チーム名 */
+  goalListContextLabel(goal: Goal): string {
+    if (goal.scope === 'personal') return '';
+    if (goal.scope === 'project') return this.projectName(goal.projectId) || '—';
+    return this.teamName(goal.teamId) || '—';
+  }
+
+  goalStatusPillClass(status: Goal['status']): string {
+    switch (status) {
+      case '未着手':
+        return 'goal-status-pill goal-status-pill--todo';
+      case '進行中':
+        return 'goal-status-pill goal-status-pill--active';
+      case '保留':
+        return 'goal-status-pill goal-status-pill--hold';
+      case '達成':
+        return 'goal-status-pill goal-status-pill--done';
+      default:
+        return 'goal-status-pill';
+    }
+  }
+
+  goalPriorityPillClass(priority: Goal['priority']): string {
+    if (priority === '高') return 'goal-priority-pill goal-priority-pill--high';
+    if (priority === '中') return 'goal-priority-pill goal-priority-pill--mid';
+    if (priority === '低') return 'goal-priority-pill goal-priority-pill--low';
+    return 'goal-priority-pill goal-priority-pill--none';
+  }
+
+  goalScopeLabel(scope: GoalScope): string {
+    if (scope === 'personal') return '個人';
+    if (scope === 'project') return 'プロジェクト';
+    return 'チーム';
   }
 
   uid(): string {
@@ -413,8 +538,7 @@ export class GoalComponent implements OnInit {
       this.detailLinkedTasks.set([]);
       return;
     }
-    const done = tasks.filter((t) => t.status === '完了').length;
-    this.detailProgressPercent.set(Math.round((100 * done) / tasks.length));
+    this.detailProgressPercent.set(this.tasksToLinkedProgressPercent(tasks));
     this.detailLinkedTasks.set(tasks);
   }
 
@@ -457,7 +581,11 @@ export class GoalComponent implements OnInit {
     const goal = this.selectedGoal();
     const uid = this.uid();
     if (!goal || !uid || !this.canDelete(goal)) return;
-    if (!confirm('この目標を削除しますか？')) return;
+    const ok = await this.confirmDialog.confirm({
+      title: 'この目標を削除しますか？',
+      message: '削除すると元に戻せません。',
+    });
+    if (!ok) return;
     await deleteDoc(doc(db, 'goals', goal.id));
     this.closeDetail();
     await this.reloadAll(uid);
@@ -490,6 +618,7 @@ export class GoalComponent implements OnInit {
     if (!this.canEdit(goal) || !this.isTaskEligibleForGoal(goal, task)) return;
     await updateDoc(doc(db, 'tasks', task.id), { goalId: goal.id });
     await this.refreshDetailMetrics(goal);
+    await this.refreshGoalListProgressForIds([goal.id]);
     await this.openLinkTaskPicker(goal);
   }
 
@@ -497,6 +626,7 @@ export class GoalComponent implements OnInit {
     if (!this.canEdit(goal)) return;
     await updateDoc(doc(db, 'tasks', task.id), { goalId: null });
     await this.refreshDetailMetrics(goal);
+    await this.refreshGoalListProgressForIds([goal.id]);
     await this.openLinkTaskPicker(goal);
   }
 

@@ -97,7 +97,14 @@
                         <div class="project-col-members">
                             <div class="project-members" aria-hidden="true">
                                 @for (member of members.slice(0, 5); track member.id) {
-                                    <span class="avatar" [attr.title]="member.user?.userName ?? ''">{{ member.user?.userName?.charAt(0) ?? '?' }}</span>
+                                    <span
+                                        class="avatar avatar--profile-link"
+                                        role="link"
+                                        tabindex="0"
+                                        [attr.title]="(member.user?.userName ?? '') + ' のプロフィール'"
+                                        (click)="goMemberProfile(member.userId, $event)"
+                                        (keydown.enter)="goMemberProfile(member.userId, $event)"
+                                    >{{ avatarLetter(member.user?.userName) }}</span>
                                 }
                                 @if (members.length > 5) {
                                     <span class="avatar avatar-more">+{{ members.length - 5 }}</span>
@@ -392,6 +399,12 @@
         flex-shrink: 0;
         border: 2px solid #fff;
         box-shadow: 0 0 0 1px #e0e0e0;
+    }
+    .avatar--profile-link {
+        cursor: pointer;
+    }
+    .avatar--profile-link:hover {
+        filter: brightness(1.06);
     }
     .avatar-more {
         background: #6b7280;

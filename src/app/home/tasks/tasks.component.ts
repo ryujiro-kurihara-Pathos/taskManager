@@ -4,13 +4,14 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TasksService } from '../../services/tasks.service';
 import { CommonModule } from '@angular/common';
 import { ModalService } from '../../services/modal.service';
-import { AddTaskInput, FilterKey, SortKey, Task } from '../../types/task';
+import { AddTaskInput, FilterKey, SortKey, Tag, Task } from '../../types/task';
 import { AuthStateService } from '../../services/auth-state.service';
 import { AuthService } from '../../services/auth.service';
 import { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { DragDropModule } from '@angular/cdk/drag-drop';
 import { deleteChildrenTask, updateTask } from '../../firestore';
 import { isTaskCreator } from '../../utils/task-permissions';
+import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 
 @Component({
     selector: 'app-tasks',
@@ -26,6 +27,7 @@ export class TaskComponent {
   authService = inject(AuthService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private confirmDialog = inject(ConfirmDialogService);
 
   displayFormat: 'list' | 'board' | 'calendar' = 'list';
 
@@ -38,6 +40,9 @@ export class TaskComponent {
   readonly calendarRowHeightPx = 48;
   /** ヘッダー列（曜日・日付）の下からタスク層までのオフセット（tasks.component.html の .task-layer top と一致） */
   readonly calendarHeaderBandPx = 65;
+
+  /** カレンダーで完了タスクの帯も描画する */
+  calendarShowCompletedTasks = false;
 
   // メニュー
   isSortMenuOpen: boolean = false;
@@ -186,6 +191,11 @@ export class TaskComponent {
     if (allowed.length < allIds.length) {
       window.alert('作成者のみ削除できるため、該当する課題のみ削除します。');
     }
+    const delOk = await this.confirmDialog.confirm({
+      title: '選択した課題を削除しますか？',
+      message: `削除できる ${allowed.length} 件の課題を完全に削除します。子タスクやコメントも失われます。よろしいですか？`,
+    });
+    if (!delOk) return;
     try {
       for (const taskId of allowed) {
         await deleteChildrenTask(taskId);
@@ -331,6 +341,53 @@ export class TaskComponent {
     return `task-pill task-pill--tag-${color}`;
   }
 
+  /**
+   * カレンダー帯の本体色（ステータス＋未完了の期限超過）。
+   * 完了は一覧が未完了中心でも将来用に定義しておく。
+   */
+  calendarBarModifierClass(task: Task): string {
+    if (task.status === '完了') {
+      return 'cal-bar--done';
+    }
+    if (this.getDueDateStatus(task.dueDate, task.status) === 'overdue') {
+      return 'cal-bar--overdue';
+    }
+    switch (task.status) {
+      case '未着手':
+        return 'cal-bar--todo';
+      case '進行中':
+        return 'cal-bar--inprogress';
+      case '保留':
+        return 'cal-bar--hold';
+      default:
+        return 'cal-bar--default';
+    }
+  }
+
+  /** タグ名のキーワード → 分類色。なければ既存の tag.color パレット */
+  calendarTagCategoryClass(tag: Tag): string {
+    const raw = (tag.name ?? '').trim();
+    if (/仕事|業務|会議|仕様|プロジェクト|タスク/i.test(raw)) {
+      return 'cal-tag-cat--work';
+    }
+    if (/学習|勉強|学校|講義|受験|資格|課題/i.test(raw)) {
+      return 'cal-tag-cat--study';
+    }
+    if (/家事|掃除|買い物|育児/i.test(raw)) {
+      return 'cal-tag-cat--chore';
+    }
+    if (/個人|プライベート|趣味|プライベ/i.test(raw)) {
+      return 'cal-tag-cat--personal';
+    }
+    const c = String(tag.color ?? 'gray').replace(/[^a-z0-9-]/gi, '') || 'gray';
+    return `cal-tag-palette--${c}`;
+  }
+
+  /** カレンダー用タグ記号（丸のみ） */
+  calendarTagDotClasses(tag: Tag): string {
+    return `cal-tag-dot ${this.calendarTagCategoryClass(tag)}`;
+  }
+
   // カレンダー
   getWeekDates(baseDate: Date): Date[] {
       const date = new Date(baseDate);
@@ -402,12 +459,19 @@ export class TaskComponent {
     });
   }
 
-  /** 週内かつ一覧（未完了・フィルター）に載るタスク。カレンダー描画と行計算の単一ソース */
+  /** 週内かつ一覧のフィルターに載るタスク。カレンダー描画と行計算の単一ソース */
   getCalendarWeekTasks(): Task[] {
-    const displayedIds = new Set(
-      this.displayTasks('notDone').map(t => t.id),
-    );
-    return this.getWeekTasks().filter(t => displayedIds.has(t.id));
+    const ids = this.displayTasks('notDone').map((t) => t.id);
+    if (this.calendarShowCompletedTasks) {
+      ids.push(...this.displayTasks('done').map((t) => t.id));
+    }
+    const displayedIds = new Set(ids);
+    return this.getWeekTasks().filter((t) => displayedIds.has(t.id));
+  }
+
+  onCalendarShowCompletedChange(ev: Event): void {
+    const el = ev.target as HTMLInputElement | null;
+    this.calendarShowCompletedTasks = !!el?.checked;
   }
 
   getTaskStartIndex(task: Task): number {

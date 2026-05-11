@@ -1,6 +1,7 @@
-import { Component, inject } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { watchAuthState, updateUserName, logout } from '../auth';
 import {
     countActiveProjectsForUser,
@@ -8,10 +9,13 @@ import {
     getPersonalInboxTasks,
     getTeamIdsByUserId,
     getTeamsByIds,
+    getUser,
     type PersonalGoalProgressSummary,
 } from '../firestore';
+import { AuthStateService } from '../services/auth-state.service';
 import { Task } from '../types/task';
 import { Team } from '../types/team';
+import { userAvatarInitial } from '../utils/user-avatar';
 
 /** プロフィール「個人レポート」表示用 */
 export type PersonalTaskReport = {
@@ -33,18 +37,27 @@ export type RecentActivityItem = {
     imports: [RouterLink, FormsModule],
     templateUrl: './profile.component.html',
 })
-export class ProfileComponent {
+export class ProfileComponent implements OnInit, OnDestroy {
     private router = inject(Router);
+    private route = inject(ActivatedRoute);
+    private authState = inject(AuthStateService);
+
+    private paramSub?: Subscription;
+    private authUnsub?: () => void;
 
     userName = '';
     userEmail = '';
     userUid = '';
 
+    /** 表示しているプロフィールのユーザー（ルート param または自分） */
+    displayUid = '';
+    isOwnProfile = true;
+    profileNotFound = false;
+
     editName = '';
     isEditing = false;
     showLogoutConfirm = false;
 
-    /** 所属チーム */
     teams: Team[] = [];
     teamsLoading = false;
 
@@ -57,30 +70,78 @@ export class ProfileComponent {
 
     recentActivity: RecentActivityItem[] = [];
 
-    ngOnInit() {
-        watchAuthState((user) => {
-            if (user) {
-                this.userName = user.displayName || '';
-                this.userEmail = user.email || '';
-                this.userUid = user.uid || '';
-                void this.loadTeams(user.uid);
-                void this.loadDashboard(user.uid);
-            } else {
+    ngOnInit(): void {
+        this.paramSub = this.route.paramMap.subscribe(() => {
+            void this.syncRouteAndLoad();
+        });
+        this.authUnsub = watchAuthState(() => {
+            void this.syncRouteAndLoad();
+        });
+    }
+
+    ngOnDestroy(): void {
+        this.paramSub?.unsubscribe();
+        this.authUnsub?.();
+    }
+
+    avatarLetter(): string {
+        return userAvatarInitial(this.userName);
+    }
+
+    private async syncRouteAndLoad(): Promise<void> {
+        const self = this.authState.uid;
+        if (!self) return;
+
+        const paramId = this.route.snapshot.paramMap.get('userId');
+        const target = paramId?.trim() || self;
+        this.displayUid = target;
+        this.isOwnProfile = target === self;
+
+        this.profileNotFound = false;
+        this.isEditing = false;
+        this.showLogoutConfirm = false;
+
+        await this.loadProfileFor(target);
+    }
+
+    private async loadProfileFor(targetUid: string): Promise<void> {
+        this.taskReportLoading = true;
+        this.taskReportError = null;
+        this.taskReport = null;
+        this.goalsSummary = null;
+        this.activeProjectCount = null;
+        this.recentActivity = [];
+
+        try {
+            const u = await getUser(targetUid);
+            if (!u) {
+                this.profileNotFound = true;
                 this.userName = '';
                 this.userEmail = '';
                 this.userUid = '';
                 this.teams = [];
-                this.taskReportLoading = false;
-                this.taskReportError = null;
-                this.taskReport = null;
-                this.activeProjectCount = null;
-                this.goalsSummary = null;
-                this.recentActivity = [];
+                this.teamsLoading = false;
+                return;
             }
-        });
+            this.userName = u.userName?.trim() || '';
+            this.userEmail = u.email || '';
+            this.userUid = u.id;
+
+            await this.loadTeams(targetUid);
+
+            if (this.isOwnProfile) {
+                await this.loadDashboard(targetUid);
+            } else {
+                await this.loadActivityHistoryOnly(targetUid);
+            }
+        } catch {
+            this.profileNotFound = true;
+        } finally {
+            this.taskReportLoading = false;
+        }
     }
 
-    private async loadTeams(uid: string) {
+    private async loadTeams(uid: string): Promise<void> {
         this.teamsLoading = true;
         try {
             const ids = [...new Set(await getTeamIdsByUserId(uid))];
@@ -92,8 +153,7 @@ export class ProfileComponent {
         }
     }
 
-    private async loadDashboard(uid: string) {
-        this.taskReportLoading = true;
+    private async loadDashboard(uid: string): Promise<void> {
         this.taskReportError = null;
         this.taskReport = null;
         this.goalsSummary = null;
@@ -111,20 +171,28 @@ export class ProfileComponent {
             this.recentActivity = this.buildRecentActivity(tasks);
         } catch {
             this.taskReportError = 'データの読み込みに失敗しました。';
-        } finally {
-            this.taskReportLoading = false;
+        }
+    }
+
+    /** 他者閲覧: 個人レポートは出さず履歴のみ */
+    private async loadActivityHistoryOnly(uid: string): Promise<void> {
+        this.taskReportError = null;
+        this.recentActivity = [];
+        try {
+            const raw = await getPersonalInboxTasks(uid);
+            const tasks = raw as Task[];
+            this.recentActivity = this.buildRecentActivity(tasks);
+        } catch {
+            this.taskReportError = '履歴の読み込みに失敗しました。';
         }
     }
 
     private computeTaskReport(tasks: Task[], uid: string): PersonalTaskReport {
-        const inScope = (t: Task) =>
-            t.uid === uid || t.assignedUid === uid;
+        const inScope = (t: Task) => t.uid === uid || t.assignedUid === uid;
 
         const scoped = tasks.filter(inScope);
 
-        const assignedCount = scoped.filter(
-            (t) => t.assignedUid === uid,
-        ).length;
+        const assignedCount = scoped.filter((t) => t.assignedUid === uid).length;
 
         let notDoneCount = 0;
         let doneCount = 0;
@@ -204,28 +272,33 @@ export class ProfileComponent {
         return q;
     }
 
-    startEdit() {
+    startEdit(): void {
+        if (!this.isOwnProfile) return;
         this.isEditing = true;
         this.editName = this.userName;
     }
 
-    cancelEdit() {
+    cancelEdit(): void {
         this.isEditing = false;
     }
 
-    async saveEdit() {
+    async saveEdit(): Promise<void> {
+        if (!this.isOwnProfile) return;
         try {
             await updateUserName(this.editName);
             this.userName = this.editName;
             this.isEditing = false;
-        } catch {}
+        } catch {
+            /* 失敗時はそのまま */
+        }
     }
 
-    openLogoutConfirm() {
+    openLogoutConfirm(): void {
+        if (!this.isOwnProfile) return;
         this.showLogoutConfirm = true;
     }
 
-    cancelLogoutConfirm() {
+    cancelLogoutConfirm(): void {
         this.showLogoutConfirm = false;
     }
 
@@ -242,7 +315,7 @@ export class ProfileComponent {
         });
     }
 
-    async confirmLogout() {
+    async confirmLogout(): Promise<void> {
         this.showLogoutConfirm = false;
         try {
             await logout();

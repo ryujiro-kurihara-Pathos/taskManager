@@ -1,22 +1,43 @@
-@if (project) {
+@if (projectLoadForbidden()) {
+  <div class="tasks-container project-access-denied">
+    <p class="project-access-denied-title">このプロジェクトにアクセスできません</p>
+    <p class="project-access-denied-text">プロジェクトのメンバーに含まれていないため、詳細と課題を表示できません。</p>
+    <a routerLink="/home/projects" class="project-access-denied-link">プロジェクト一覧へ</a>
+  </div>
+} @else if (project) {
 <div class="tasks-container">
   <header class="tasks-header tasks-header--team-detail">
     <div class="tasks-header-leading">
       <p class="tasks-header-title">{{ project.name }}</p>
     </div>
     <div class="team-header-actions">
-      <button type="button" class="toolbar-btn team-header-edit-btn" (click)="openProjectEditModal(project)">
-        編集
-      </button>
+      @if (canOpenProjectSettingsModal()) {
+        <button type="button" class="toolbar-btn team-header-edit-btn" (click)="openProjectEditModal(project)">
+          編集
+        </button>
+      }
+      @if (canLeaveProject()) {
+        <button type="button" class="toolbar-btn team-header-leave-btn" (click)="leaveProject()">
+          退出
+        </button>
+      }
       <div
         class="member-list"
-        (click)="openMemberListModal(project)"
-        title="メンバー一覧"
+        [class.member-list--clickable]="canOpenProjectSettingsModal()"
+        (click)="canOpenProjectSettingsModal() && openProjectEditModal(project)"
+        [attr.title]="
+          canOpenProjectSettingsModal() ? 'プロジェクトを編集（メンバー管理）' : 'メンバー一覧（閲覧のみ）'
+        "
       >
         @for (member of (project.projectMembers ?? []); track member.id) {
-          <div class="member-circle">
-            <p class="member-circle-text">{{ member.user?.userName?.charAt(0) ?? '?' }}</p>
-          </div>
+          <a
+            class="member-circle member-circle--link"
+            [routerLink]="['/profile', member.userId]"
+            (click)="$event.stopPropagation()"
+            [attr.title]="member.user?.userName ?? 'プロフィール'"
+          >
+            <p class="member-circle-text">{{ avatarLetter(member.user?.userName) }}</p>
+          </a>
         }
       </div>
     </div>
@@ -48,7 +69,34 @@
     </button>
   </nav>
   <div class="tasks-tool-row" (click)="$event.stopPropagation()">
-  <button class="add-task-btn" type="button" (click)="openTaskAddModal(project)">+ タスクを追加</button>
+    <button class="add-task-btn" type="button" (click)="openTaskAddModal(project)">
+      + タスクを追加
+    </button>
+    <div class="menu-wrapper" (click)="$event.stopPropagation()">
+      @if (displayFormat === 'list') {
+        <button
+          class="toolbar-btn"
+          type="button"
+          [class.active]="isSortMenuOpen"
+          [class.selected]="isSelectedSort"
+          (click)="toggleSortMenu()"
+        >
+          ソート
+        </button>
+      }
+      @if (tasksService.sortKey !== null) {
+        <button class="clear-btn" type="button" (click)="clearSort()">
+          {{ getSortLabel(tasksService.sortKey) }} ×
+        </button>
+      }
+      @if (isSortMenuOpen) {
+        <div class="dropdown-menu" (click)="$event.stopPropagation()">
+          <button class="menu-item" (click)="selectSort('dueDate')">期日</button>
+          <button class="menu-item" (click)="selectSort('createdAt')">作成日</button>
+          <button class="menu-item" (click)="selectSort('updatedAt')">最終変更日</button>
+        </div>
+      }
+    </div>
     <input
       class="task-search-input"
       type="text"
@@ -58,24 +106,6 @@
       (input)="tasksService.searchQuery.set($any($event.target).value)"
       (compositionend)="tasksService.searchQuery.set($any($event.target).value)"
     />
-  <div class="menu-wrapper" (click)="$event.stopPropagation()">
-    @if (displayFormat === 'list') {
-      <button class="toolbar-btn" type="button" 
-      [class.active]="isSortMenuOpen"
-      [class.selected]="isSelectedSort"
-      (click)="toggleSortMenu()">ソート</button>
-    }
-    @if (tasksService.sortKey !== null) {
-      <button class="clear-btn" type="button" (click)="clearSort()">{{ getSortLabel(tasksService.sortKey) }} ×</button>
-    }
-    @if (isSortMenuOpen) {
-      <div class="dropdown-menu" (click)="$event.stopPropagation()">
-        <button class="menu-item" (click)="selectSort('dueDate')">期日</button>
-        <button class="menu-item" (click)="selectSort('createdAt')">作成日</button>
-        <button class="menu-item" (click)="selectSort('updatedAt')">最終変更日</button>
-      </div>
-    }
-  </div>
   </div>
   @if (displayFormat === 'list') {
     <!-- リスト -->
@@ -98,16 +128,8 @@
                 />
               </th>
               <th class="task-table-column-title" scope="col">タスク名</th>
-              <th class="task-table-column-assign">
-                <button class="th-filter-btn" (click)="$event.stopPropagation()">
-                  担当者
-                  <span class="th-filter-btn-icon">
-                    ▼
-                  </span>
-                </button>
-                <!-- @for (member of project.projectMembers ?? []; track member.id) {
-                  <span class="task-pill" [ngClass]="memberPillClass(member.user?.color)">{{ member.user?.userName }}</span>
-                } -->
+              <th class="task-table-column-assign th-col-plain" scope="col">
+                <span class="th-col-plain-label">担当者</span>
               </th>
               <th class="filter-th task-table-column-due-date">
                 <button class="th-filter-btn" 
@@ -224,7 +246,7 @@
                   />
                 </td>
                 <td class="task-table-cell-title">{{ task.title }}</td>
-                <td class="task-table-cell-assign">{{ assigneeName(task) }}</td>
+                <td class="task-table-cell-assign" [attr.title]="assigneeName(task)">{{ assigneeName(task) }}</td>
                 <td class="task-table-cell-due">
                   <span class="task-due-range" [ngClass]="getDueDateStatus(task.dueDate, task.status)">{{ task.startDate }} ~ {{ task.dueDate }}</span>
                 </td>
@@ -462,12 +484,52 @@
   .team-header-edit-btn:hover {
     background-color: #ebf1ee;
   }
+  .team-header-leave-btn {
+    padding: 8px 14px;
+    border: 1px solid #c8ccc9;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    color: #5c4033;
+    cursor: pointer;
+  }
+  .team-header-leave-btn:hover {
+    background: #fff8f5;
+    border-color: #e0c4c4;
+  }
+  .project-access-denied {
+    padding: 32px 20px 48px;
+    max-width: 560px;
+  }
+  .project-access-denied-title {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a1a;
+  }
+  .project-access-denied-text {
+    margin: 0 0 16px;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #555;
+  }
+  .project-access-denied-link {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2d5a32;
+  }
   .member-list {
     display: flex;
     align-items: center;
     flex-direction: row-reverse;
-    cursor: pointer;
     padding: 4px 0;
+  }
+  .member-list--clickable {
+    cursor: pointer;
+  }
+  .member-list:not(.member-list--clickable) {
+    cursor: default;
   }
   .member-circle {
     width: 32px;
@@ -489,6 +551,14 @@
     margin: 0;
     font-size: 13px;
     font-weight: 700;
+  }
+  .member-circle--link {
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .member-circle--link:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
   }
   .project-detail-empty {
     margin: 0;
@@ -524,6 +594,21 @@
   .add-task-btn:hover {
     background: #255c2b;
   }
+  .task-search-input {
+    flex: 1;
+    min-width: 220px;
+    padding: 10px 14px;
+    border: 1px solid #c8ccc9;
+    border-radius: 8px;
+    background: #f9fafb;
+    font-size: 14px;
+    box-sizing: border-box;
+    outline: none;
+  }
+  .task-search-input:focus {
+    border-color: #4ea356;
+    background: #fff;
+  }
   .list {
     flex: 1;
     min-height: 0;
@@ -557,9 +642,9 @@
   .toolbar-btn,
   .clear-btn {
     height: 30px;
-    border: none;
+    border: 1px solid #c8ccc9;
     background: transparent;
-    border-radius: 4px;
+    border-radius: 8px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -576,9 +661,11 @@
   }
   .toolbar-btn:hover {
     background: #ebf1ee;
+    border-color: black;
   }
   .toolbar-btn.active {
     background: #ebf1ee;
+    border-color: black;
   }
   .toolbar-btn.selected {
     font-weight: 600;
@@ -718,6 +805,29 @@
     min-width: 0;
     max-width: 40%;
     overflow: hidden;
+  }
+  .th-col-plain {
+    vertical-align: middle;
+  }
+  .th-col-plain-label {
+    display: inline-block;
+    padding: 2px 0;
+    font-weight: 600;
+    color: #5c5c5c;
+    letter-spacing: 0.02em;
+  }
+  .task-table-column-assign {
+    width: 11%;
+    min-width: 100px;
+    max-width: 160px;
+  }
+  .task-table-cell-assign {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: #3d3d3d;
   }
   .task-table-column-due-date {
     min-width: 180px;

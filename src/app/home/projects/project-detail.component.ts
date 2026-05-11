@@ -7,7 +7,7 @@ import {
     inject,
     signal,
 } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
     getProject,
     getProjectMembers,
@@ -16,33 +16,46 @@ import {
     deleteChildrenTask,
     subscribeTasksByProjectId,
     addTask,
+    deleteProjectMember,
 } from '../../firestore';
 import { Project } from '../../types/project';
 import { AddTaskInput, SortKey, Task } from '../../types/task';
 import { isTaskCreator } from '../../utils/task-permissions';
+import { userAvatarInitial } from '../../utils/user-avatar';
+import {
+    canDeleteProject,
+    canEditProjectBasics,
+    canManageProjectMembers,
+    canViewProject,
+} from '../../utils/member-permissions';
 import { FormsModule } from '@angular/forms';
 import { AuthStateService } from '../../services/auth-state.service';
 import { ModalService } from '../../services/modal.service';
 import { TasksService } from '../../services/tasks.service';
+import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { CommonModule } from '@angular/common';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 
 @Component({
     selector: 'app-project-detail',
     templateUrl: './project-detail.component.html',
-    imports: [FormsModule, CommonModule, DragDropModule],
+    imports: [FormsModule, CommonModule, DragDropModule, RouterLink],
 })
 export class ProjectDetailComponent implements OnInit, OnDestroy {
     private route = inject(ActivatedRoute);
+    private router = inject(Router);
     private modalService = inject(ModalService);
     authStateService = inject(AuthStateService);
     tasksService = inject(TasksService);
+    private confirmDialog = inject(ConfirmDialogService);
 
     displayFormat: 'list' | 'board' | 'calendar' = 'list';
 
     projectId = this.route.snapshot.paramMap.get('projectId');
     project: Project | null = null;
     tasks = signal<Task[]>([]);
+    /** projectMembers に自分が含まれない */
+    projectLoadForbidden = signal(false);
 
     readonly filteredBoardTodos = computed(() =>
         this.tasksService.applySearchOnly(
@@ -66,6 +79,11 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
     );
 
     selectedTaskIds: string[] = [];
+
+    avatarLetter(name: string | null | undefined): string {
+        return userAvatarInitial(name);
+    }
+
     isSortMenuOpen = false;
     isSelectedSort = false;
 
@@ -84,6 +102,15 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
         this.project = await this.getProject(this.projectId);
         if (!this.project) return;
 
+        const projectMembers = await this.getProjectMembers(this.projectId);
+        this.project.projectMembers = projectMembers;
+        const uid = this.authStateService.uid;
+        if (!canViewProject(projectMembers, uid)) {
+            this.projectLoadForbidden.set(true);
+            this.project = null;
+            return;
+        }
+
         this.tasksUnsub?.();
         const pid = this.projectId;
         this.tasksUnsub = subscribeTasksByProjectId(pid, (incoming) => {
@@ -93,9 +120,6 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
                 this.tasks.set(incoming);
             });
         });
-
-        const projectMembers = await this.getProjectMembers(this.projectId);
-        this.project.projectMembers = projectMembers;
     }
 
     ngOnDestroy(): void {
@@ -104,11 +128,44 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
     }
 
     openProjectEditModal(project: Project) {
+        if (!this.canOpenProjectSettingsModal()) return;
         this.modalService.open('project-edit', project);
     }
 
-    openMemberListModal(project: Project) {
-        this.modalService.open('project-member-list', project);
+    canOpenProjectSettingsModal(): boolean {
+        if (!this.project) return false;
+        const m = this.project.projectMembers ?? [];
+        const uid = this.authStateService.uid;
+        return (
+            canEditProjectBasics(this.project, m, uid) ||
+            canManageProjectMembers(this.project, m, uid)
+        );
+    }
+
+    /** オーナー以外はプロジェクトから退出できる */
+    canLeaveProject(): boolean {
+        if (!this.project) return false;
+        const m = this.project.projectMembers ?? [];
+        const uid = this.authStateService.uid;
+        return canViewProject(m, uid) && !canDeleteProject(this.project, m, uid);
+    }
+
+    async leaveProject(): Promise<void> {
+        const p = this.project;
+        const pid = this.projectId;
+        const uid = this.authStateService.uid;
+        if (!p || !pid || !uid) return;
+        const ok = await this.confirmDialog.confirm({
+            title: 'このプロジェクトから退出しますか？',
+            message: 'このプロジェクトの課題にはアクセスできなくなります。チームへの所属は維持されます。',
+        });
+        if (!ok) return;
+        try {
+            await deleteProjectMember(uid, pid);
+            await this.router.navigate(['/home/projects']);
+        } catch (e) {
+            console.error('プロジェクトからの退出に失敗しました', e);
+        }
     }
 
     openTaskAddModal(project: Project) {
@@ -192,11 +249,12 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
     async getProjectMembers(projectId: string) {
         try {
             const projectMembers = await getProjectMembers(projectId);
-            projectMembers.forEach(async (member) => {
-                const user = await getUser(member.userId);
-                if (!user) return;
-                member.user = user;
-            });
+            await Promise.all(
+                projectMembers.map(async (member) => {
+                    const user = await getUser(member.userId);
+                    if (user) member.user = user;
+                }),
+            );
             return projectMembers;
         } catch (error) {
             console.error('プロジェクトメンバーを取得できませんでした', error);
@@ -317,6 +375,11 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
         if (allowed.length < allIds.length) {
             window.alert('作成者のみ削除できるため、該当する課題のみ削除します。');
         }
+        const delOk = await this.confirmDialog.confirm({
+            title: '選択した課題を削除しますか？',
+            message: `削除できる ${allowed.length} 件の課題を完全に削除します。子タスクやコメントも失われます。よろしいですか？`,
+        });
+        if (!delOk) return;
         try {
             for (const taskId of allowed) {
                 await deleteChildrenTask(taskId);

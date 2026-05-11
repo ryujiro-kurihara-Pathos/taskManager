@@ -1,40 +1,242 @@
-<div class="login">
-    <button class="home-button" routerLink="/home">ホームへ</button>
-    <div class="login-title">
-        <h1>ログイン</h1>
+<div class="auth-page">
+  <header class="auth-topbar">
+    <a routerLink="/home" class="auth-brand">Task Manager</a>
+    <nav class="auth-topbar-nav" aria-label="アカウント">
+      <a routerLink="/home" class="auth-topbar-link">ホーム</a>
+      <a routerLink="/signup" class="auth-topbar-link auth-topbar-link--emphasis">新規登録</a>
+    </nav>
+  </header>
+
+  <main class="auth-main">
+    <div class="auth-card">
+      <h1 class="auth-title">ログイン</h1>
+      <p class="auth-lead">登録したメールアドレスとパスワードでサインインします。</p>
+
+      @if (showSignupVerificationNotice) {
+        <div class="auth-notice auth-notice--info" role="status">
+          確認メールを送信しました。メール内のリンクを開いたうえで、ここからログインしてください。
+        </div>
+      }
+
+      <div class="auth-fields">
+        <label class="auth-label" for="login-email">メールアドレス</label>
+        <input
+          id="login-email"
+          type="email"
+          [(ngModel)]="email"
+          class="auth-input"
+          placeholder="example@email.com"
+          autocomplete="email"
+        />
+
+        <label class="auth-label" for="login-password">パスワード</label>
+        <input
+          id="login-password"
+          type="password"
+          [(ngModel)]="password"
+          class="auth-input"
+          placeholder="パスワード"
+          autocomplete="current-password"
+        />
+      </div>
+
+      <div class="auth-actions">
+        <button type="button" class="auth-btn auth-btn--primary" (click)="onLogin()">ログイン</button>
+        <a routerLink="/signup" class="auth-btn auth-btn--secondary">アカウントをお持ちでない方はこちら</a>
+      </div>
     </div>
-    <div class="input-container">
-        <input type="email" [(ngModel)]="email" class="email-input" placeholder="メールアドレス">
-        <input type="password" [(ngModel)]="password" class="password-input" placeholder="パスワード">
-    </div>
-    <div class="button-container">
-        <button class="login-button" (click)="onLogin()">ログイン</button>
-        <button class="signup-button" routerLink="/signup">新規登録へ</button>
-    </div>
+  </main>
 </div>
 
 <style>
-    .login {
-        min-height: 100vh;
-        padding: 100px 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        background-color: #f0f0f0;
-    }
-
-    .home-button {
-        border: none;
-        cursor: pointer;
-    }
-
-    .input-container {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .button-container {
-        display: flex;
-        flex-direction: column;
-    }
+  :host {
+    display: block;
+  }
+  .auth-page {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    background: #f3f5f4;
+    box-sizing: border-box;
+  }
+  .auth-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 20px;
+    min-height: 52px;
+    flex-shrink: 0;
+    background: linear-gradient(180deg, #1b4a20 0%, #204b26 100%);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+    box-sizing: border-box;
+  }
+  .auth-brand {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #fff;
+    text-decoration: none;
+  }
+  .auth-brand:hover {
+    color: rgba(255, 255, 255, 0.92);
+  }
+  .auth-topbar-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .auth-topbar-link {
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95);
+    text-decoration: none;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+  .auth-topbar-link:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.65);
+  }
+  .auth-topbar-link--emphasis {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.55);
+  }
+  .auth-topbar-link--emphasis:hover {
+    background: rgba(255, 255, 255, 0.22);
+    border-color: #fff;
+  }
+  .auth-main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 20px 40px;
+    box-sizing: border-box;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 420px;
+    padding: 28px 24px 26px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    box-sizing: border-box;
+  }
+  .auth-title {
+    margin: 0 0 8px;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #111827;
+  }
+  .auth-lead {
+    margin: 0 0 22px;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #6b7280;
+  }
+  .auth-notice {
+    margin: 0 0 18px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    box-sizing: border-box;
+  }
+  .auth-notice--info {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border: 1px solid #c8e6c9;
+  }
+  .auth-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .auth-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: -10px;
+  }
+  .auth-input {
+    width: 100%;
+    padding: 11px 14px;
+    font-size: 15px;
+    border: 1px solid #c8ccc9;
+    border-radius: 8px;
+    background: #f9fafb;
+    color: #111827;
+    box-sizing: border-box;
+    outline: none;
+    transition:
+      border-color 0.15s ease,
+      background 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .auth-input::placeholder {
+    color: #9ca3af;
+  }
+  .auth-input:hover {
+    border-color: #b8bfb9;
+  }
+  .auth-input:focus {
+    border-color: #4ea356;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(78, 163, 86, 0.22);
+  }
+  .auth-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 22px;
+  }
+  .auth-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    box-sizing: border-box;
+    text-decoration: none;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease;
+  }
+  .auth-btn--primary {
+    border: none;
+    background: #4ea356;
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(27, 82, 20, 0.2);
+  }
+  .auth-btn--primary:hover {
+    background: #255c2b;
+  }
+  .auth-btn--primary:active {
+    transform: translateY(1px);
+  }
+  .auth-btn--secondary {
+    border: 1px solid #c8ccc9;
+    background: #fff;
+    color: #374151;
+  }
+  .auth-btn--secondary:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+    color: #111827;
+  }
 </style>

@@ -1,6 +1,6 @@
 import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthStateService } from '../../services/auth-state.service';
 import {
     addProject,
@@ -17,9 +17,9 @@ import {
 import { FormsModule } from '@angular/forms';
 import { AddProjectMemberInput, Project } from '../../types/project';
 import { Team } from '../../types/team';
-import { RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { TasksService } from '../../services/tasks.service';
+import { userAvatarInitial } from '../../utils/user-avatar';
 
 @Component({
     selector: 'app-project-list',
@@ -315,5 +315,15 @@ export class ProjectListComponent {
             console.error('プロジェクトメンバー取得に失敗しました', error);
             return [];
         }
+    }
+
+    avatarLetter(name: string | null | undefined): string {
+        return userAvatarInitial(name);
+    }
+
+    goMemberProfile(userId: string, event: Event): void {
+        event.preventDefault();
+        event.stopPropagation();
+        void this.router.navigate(['/profile', userId]);
     }
 }

@@ -13,6 +13,7 @@ import { InboxComponent } from './home/inbox/inbox.component';
 import { TeamComponent } from './home/teams/team.component';
 import { TeamDetailComponent } from './home/teams/team-detail.component';
 import { GoalComponent } from './home/goals/goals.component';
+import { VerifyEmailComponent } from './verify-email/verify-email.component';
 
 export const routes: Routes = [
   { 
@@ -37,6 +38,8 @@ export const routes: Routes = [
   { path: 'invite-response/:inviteId', component: InviteResponseComponent },
   { path: 'signup', component: SignupComponent },
   { path: 'login', component: LoginComponent },
+  { path: 'verify-email', component: VerifyEmailComponent },
+  { path: 'profile/:userId', component: ProfileComponent, canActivate: [authGuard] },
   { path: 'profile', component: ProfileComponent, canActivate: [authGuard] },
   { path: '', redirectTo: 'home', pathMatch: 'full' },
 ];

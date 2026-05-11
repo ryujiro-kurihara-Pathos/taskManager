@@ -1,16 +1,30 @@
 <div class="profile-container">
     <header>
         <h1>プロフィール</h1>
+        @if (!profileNotFound && !isOwnProfile) {
+            <p class="profile-header-sub">他ユーザーのプロフィール（閲覧のみ）</p>
+        }
     </header>
+
+    @if (profileNotFound) {
+        <p class="profile-not-found" role="alert">ユーザーが見つかりません。</p>
+        <div class="profile-actions">
+            <button type="button" class="btn home-btn" routerLink="/home">ホームへ</button>
+        </div>
+    } @else {
     <div class="profile-actions">
         <button type="button" class="btn home-btn" routerLink="/home">ホームへ</button>
-        <button type="button" class="btn edit-btn" (click)="startEdit()">ユーザー名を編集</button>
-        <button type="button" class="btn logout-btn" (click)="openLogoutConfirm()">ログアウト</button>
+        @if (isOwnProfile) {
+            <button type="button" class="btn edit-btn" (click)="startEdit()">ユーザー名を編集</button>
+            <button type="button" class="btn logout-btn" (click)="openLogoutConfirm()">ログアウト</button>
+        }
     </div>
 
     <section class="profile-info" aria-labelledby="profile-basic-heading">
         <h2 id="profile-basic-heading" class="sr-only">基本情報</h2>
-        <div class="profile-circle" aria-hidden="true"></div>
+        <div class="profile-circle" [attr.aria-label]="userName ? 'アイコン: ' + avatarLetter() : 'アイコン'">
+            <span class="profile-circle-initial">{{ avatarLetter() }}</span>
+        </div>
         <dl class="profile-dl">
             <div class="profile-dl-row">
                 <dt>ユーザー名</dt>
@@ -18,11 +32,11 @@
             </div>
             <div class="profile-dl-row">
                 <dt>メールアドレス</dt>
-                <dd><span class="readonly-note">表示のみ</span>{{ userEmail || '—' }}</dd>
+                <dd>{{ userEmail || '—' }}</dd>
             </div>
             <div class="profile-dl-row">
-                <dt>UID</dt>
-                <dd><span class="readonly-note">表示のみ</span><code class="uid-code">{{ userUid || '—' }}</code></dd>
+                <dt>ユーザーID</dt>
+                <dd>{{ userUid || '—' }}</dd>
             </div>
             <div class="profile-dl-row profile-dl-row--block">
                 <dt>所属チーム</dt>
@@ -43,6 +57,7 @@
         </dl>
     </section>
 
+    @if (isOwnProfile) {
     <section class="task-report" aria-labelledby="task-report-heading">
         <h2 id="task-report-heading" class="task-report-title">個人レポート</h2>
         <p class="task-report-note">
@@ -121,22 +136,38 @@
             </ul>
         }
     </section>
+    }
 
     <section class="activity-section" aria-labelledby="activity-heading">
         <h2 id="activity-heading" class="task-report-title">最近の活動履歴</h2>
-        <p class="task-report-note">マイタスク対象の課題を、最終更新の新しい順に表示しています。</p>
+        <p class="task-report-note">
+            @if (isOwnProfile) {
+                マイタスク対象の課題を、最終更新の新しい順に表示しています。
+            } @else {
+                このユーザーのマイタスク（個人・トップレベル）のうち、作成者または担当の課題を、最終更新の新しい順に表示しています。
+            }
+        </p>
         @if (taskReportLoading) {
             <p class="task-report-status">読み込み中…</p>
+        } @else if (!isOwnProfile && taskReportError) {
+            <p class="task-report-status task-report-error" role="alert">{{ taskReportError }}</p>
         } @else if (recentActivity.length === 0) {
             <p class="muted">表示できる活動履歴がありません。</p>
         } @else {
             <ol class="activity-list">
                 @for (row of recentActivity; track row.taskId) {
                     <li>
-                        <a class="activity-row" [routerLink]="['/home/tasks']">
-                            <span class="activity-title">{{ row.title }}</span>
-                            <span class="activity-meta">更新: {{ formatActivityTime(row.updatedAt) }}</span>
-                        </a>
+                        @if (isOwnProfile) {
+                            <a class="activity-row" [routerLink]="['/home/tasks']">
+                                <span class="activity-title">{{ row.title }}</span>
+                                <span class="activity-meta">更新: {{ formatActivityTime(row.updatedAt) }}</span>
+                            </a>
+                        } @else {
+                            <div class="activity-row activity-row--readonly">
+                                <span class="activity-title">{{ row.title }}</span>
+                                <span class="activity-meta">更新: {{ formatActivityTime(row.updatedAt) }}</span>
+                            </div>
+                        }
                     </li>
                 }
             </ol>
@@ -163,16 +194,19 @@
                     <h3 class="edit-title">ユーザー名を編集</h3>
                     <button type="button" class="edit-cancel" (click)="cancelEdit()" aria-label="閉じる">×</button>
                 </div>
-                <p class="edit-hint">編集できるのはユーザー名のみです。メール・UID・所属チームは変更できません。</p>
-                <div class="profile-circle" aria-hidden="true"></div>
+                <p class="edit-hint">編集できるのはユーザー名のみです。</p>
+                <div class="profile-circle profile-circle--compact" aria-hidden="true">
+                    <span class="profile-circle-initial">{{ avatarLetter() }}</span>
+                </div>
                 <label class="edit-label" for="profile-edit-name">ユーザー名</label>
                 <input id="profile-edit-name" type="text" [(ngModel)]="editName" placeholder="ユーザーネーム" />
-                <p class="email">メールアドレス（表示のみ）: {{ userEmail }}</p>
-                <p class="uid">UID（表示のみ）: {{ userUid }}</p>
+                <p class="email">メールアドレス: {{ userEmail }}</p>
+                <p class="uid">ユーザーID: {{ userUid }}</p>
 
                 <button type="button" class="save-btn" (click)="saveEdit()">保存</button>
             </div>
         </div>
+    }
     }
 </div>
 
@@ -211,6 +245,21 @@
         font-size: 20px;
         font-weight: 700;
         color: #1a1a1a;
+    }
+    .profile-header-sub {
+        margin: 8px 0 0;
+        font-size: 13px;
+        color: #6b7280;
+        font-weight: 500;
+    }
+    .profile-not-found {
+        margin: 16px 0;
+        padding: 14px 16px;
+        border-radius: 8px;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+        font-size: 14px;
     }
 
     .profile-actions {
@@ -328,6 +377,25 @@
         background: linear-gradient(145deg, #5cb564, #3d8f45);
         border-radius: 50%;
         margin: 0 auto 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+    }
+    .profile-circle-initial {
+        font-size: 32px;
+        font-weight: 700;
+        color: #fff;
+        line-height: 1;
+        user-select: none;
+    }
+    .profile-circle--compact {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 12px;
+    }
+    .profile-circle--compact .profile-circle-initial {
+        font-size: 22px;
     }
 
     .profile-dl {
@@ -529,6 +597,13 @@
     .activity-row:hover {
         border-color: #c5ddc8;
         background: #f3faf4;
+    }
+    .activity-row--readonly {
+        cursor: default;
+    }
+    .activity-row--readonly:hover {
+        border-color: #e5e7eb;
+        background: #fafafa;
     }
     .activity-title {
         font-weight: 600;

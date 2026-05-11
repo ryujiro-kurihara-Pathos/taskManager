@@ -18,6 +18,11 @@ import { Notification, AddNotificationInput } from "./types/notification";
 import { AddTeamInput, AddTeamMemberInput, Team, TeamMember } from "./types/team";
 import { User } from "./types/user";
 import { Invite } from "./types/Invite";
+import {
+    canDeleteProject,
+    canManageProjectMembers,
+    canManageTeamMembers,
+} from "./utils/member-permissions";
 
 // フィールドの追加
 export async function addField(taskID: string, fieldName: string, fieldValue: any) {
@@ -63,6 +68,7 @@ export async function getUsers(userIds: string[]) {
 // タスクを追加
 export async function addTask(addTaskInput: AddTaskInput) {
     try {
+        console.log(addTaskInput);
         const createdAt = new Date();
         const tags = await getTagsByIds(addTaskInput.tagIds);
         const taskDoc = await addDoc(collection(db, 'tasks'), {
@@ -559,6 +565,31 @@ export async function getTargetIdFromInviteId(inviteId: string) {
     }
 }
 
+/** 招待ドキュメントから、プロジェクト名またはチーム名を取得（通知詳細の表示用） */
+export async function getInviteTargetDisplayName(inviteId: string): Promise<string | null> {
+    try {
+        const inviteRef = doc(db, 'invites', inviteId);
+        const inviteSnap = await getDoc(inviteRef);
+        if (!inviteSnap.exists()) return null;
+        const inv = inviteSnap.data() as Partial<Invite>;
+        const targetId = inv.targetId;
+        if (!targetId) return null;
+        if (inv.type === 'team') {
+            const teamSnap = await getDoc(doc(db, 'teams', targetId));
+            if (!teamSnap.exists()) return null;
+            const name = (teamSnap.data() as { name?: string }).name;
+            return name?.trim() || null;
+        }
+        const projectSnap = await getDoc(doc(db, 'projects', targetId));
+        if (!projectSnap.exists()) return null;
+        const name = (projectSnap.data() as { name?: string }).name;
+        return name?.trim() || null;
+    } catch (error) {
+        console.error('getInviteTargetDisplayName failed', error);
+        return null;
+    }
+}
+
 // プロジェクト
 // プロジェクトの追加
 export async function addProject(input: AddProjectInput) {
@@ -723,48 +754,98 @@ export function subscribeTasksByProjectId(
     );
 }
 
-// プロジェクトへの招待
+/** プロジェクト／チーム招待の結果（UI メッセージ用） */
+export type SendInviteResult =
+    | 'ok'
+    | 'user_not_found'
+    | 'already_pending'
+    | 'failed'
+    | 'already_member';
+
+// プロジェクトへの招待（受信トレイ通知のみ。メールは送らない）
 export async function invite(
     type: 'project' | 'team',
     targetId: string,
     inviteEmail: string,
     myEmail: string,
     invitedByUid: string, // 招待したユーザー
-) {
+): Promise<SendInviteResult> {
     try {
         // メールアドレスが一致するユーザーが存在しない場合は招待しない
         const invitedUserRef = collection(db, 'users');
         const q = query(invitedUserRef, where('email', '==', inviteEmail));
         const snapshot = await getDocs(q);
-        if(snapshot.empty) return false;
+        if (snapshot.empty) return 'user_not_found';
         const invitedUid = snapshot.docs[0].id;
-        if(!invitedUid) return false;
+        if (!invitedUid) return 'failed';
 
         // 自分のメールアドレスの場合falseを返す
-        if(inviteEmail === myEmail) return false;
+        if (inviteEmail === myEmail) return 'failed';
+
+        // すでにメンバーの場合は招待しない（プロジェクト／チームで参照コレクションを分ける）
+        if (type === 'project') {
+            const projectMemberRef = collection(db, 'projectMembers');
+            const projectMemberQ = query(
+                projectMemberRef,
+                where('userId', '==', invitedUid),
+                where('projectId', '==', targetId),
+            );
+            const projectMemberSnapshot = await getDocs(projectMemberQ);
+            if (!projectMemberSnapshot.empty) return 'already_member';
+        } else {
+            const teamMemberRef = collection(db, 'teamMembers');
+            const teamMemberQ = query(
+                teamMemberRef,
+                where('userId', '==', invitedUid),
+                where('teamId', '==', targetId),
+            );
+            const teamMemberSnapshot = await getDocs(teamMemberQ);
+            if (!teamMemberSnapshot.empty) return 'already_member';
+        }
 
         // 招待したチームもしくはプロジェクトが存在しない場合は招待しない
         const targetRef = doc(db, type === 'project' ? 'projects' : 'teams', targetId);
         const targetSnap = await getDoc(targetRef);
-        if(!targetSnap.exists()) return false;
+        if (!targetSnap.exists()) return 'failed';
 
-        // 招待したユーザーが管理者でない場合は招待しない
         const targetData = targetSnap.data() as Project | Team;
-        if(targetData.ownerId !== invitedByUid) return false;
+        if (type === 'project') {
+            const project = targetData as Project;
+            const members = await getProjectMembers(targetId);
+            if (!canManageProjectMembers(project, members, invitedByUid)) return 'failed';
+        } else {
+            const team = targetData as Team;
+            const members = await getTeamMembersByTeamId(targetId);
+            if (!canManageTeamMembers(team, members, invitedByUid)) return 'failed';
+        }
 
-        // 以前招待をされていたかどうか
-        const isPreviouslyInvitedResult: boolean = await isPreviouslyInvited(invitedUid, targetId);
+        const invitesRef = collection(db, 'invites');
+        const existingInvitesQ = query(
+            invitesRef,
+            where('invitedUid', '==', invitedUid),
+            where('targetId', '==', targetId),
+        );
+        const existingInvitesSnap = await getDocs(existingInvitesQ);
+        const hasPendingSameTarget = existingInvitesSnap.docs.some(
+            (d) =>
+                d.data()['status'] === 'pending' &&
+                d.data()['type'] === type,
+        );
+        if (hasPendingSameTarget) {
+            return 'already_pending';
+        }
+
+        // 辞退済みなど pending 以外の同一招待レコードがあれば更新、なければ新規作成（プロジェクト／チーム共通）
+        const sameKindInvites = existingInvitesSnap.docs.filter(
+            (d) => d.data()['type'] === type,
+        );
+        const resendInviteDoc = sameKindInvites.find(
+            (d) => d.data()['status'] !== 'pending',
+        );
         let inviteId: string | null = null;
-        if(isPreviouslyInvitedResult) {
-            // 招待の承認待ちの場合、招待をやめる
-            const inviteRef = collection(db, 'invites');
-            const q = query(inviteRef, where('invitedUid', '==', invitedUid), where('targetId', '==', targetId));
-            const snapshot = await getDocs(q);
-            if(snapshot.empty) return false;
-            inviteId = snapshot.docs[0].id;
-            if(!inviteId) return false;
-            if(snapshot.docs[0].data()['status'] === 'pending') return false;
-            // inviteの招待情報を変更
+        if (resendInviteDoc) {
+            inviteId = resendInviteDoc.id;
+            if (!inviteId) return 'failed';
             await updateDoc(doc(db, 'invites', inviteId), {
                 status: 'pending',
             });
@@ -793,47 +874,22 @@ export async function invite(
             sourceId: inviteId,
             isRead: false,
             isImportant: false,
-        })
-        // メール送信用ドキュメント
-        // await addDoc(collection(db, 'mail'), {
-        //     to: [invitedEmailOrUserName],
-        //     template: {
-        //         name: 'プロジェクト招待メール',
-        //         data: {
-        //             projectName: 'プロジェクト招待',
-        //             invitedByName: '招待者名',
-        //             approvalUrl: '承認URL',
-        //             rejectionUrl: '拒否URL',
-        //         }
-        //     }
-        // })
-        return true;
+        });
+        return 'ok';
     } catch (error) {
         throw error;
     }
 }
-// 以前招待をされていたかどうか
-async function isPreviouslyInvited(uid: string, projectId: string): Promise<boolean> {
-    try {
-        const projectInviteRef = collection(db, 'projectInvites');
-        const q = query(projectInviteRef, where('invitedUid', '==', uid), where('projectId', '==', projectId));
-        const snapshot = await getDocs(q);
-
-        if(snapshot.empty) return false;
-
-        return true;
-    } catch (error) {
-        throw error;
-    }
-}
-// ユーザーが管理者かどうか
+/**
+ * プロジェクトの「オーナー権限」（削除・オーナー専用操作）を持つか。
+ * project.ownerId または projectMembers で role が owner。
+ */
 export async function isAdmin(uid: string, projectId: string) {
     try {
-        const projectRef = doc(db, 'projects', projectId);
-        const projectSnap = await getDoc(projectRef);
-        if(!projectSnap.exists()) return false;
-        if (projectSnap.data()['ownerId'] === uid) return true;
-        return false;
+        const project = await getProject(projectId);
+        if (!project) return false;
+        const members = await getProjectMembers(projectId);
+        return canDeleteProject(project, members, uid);
     } catch (error) {
         return false;
     }
@@ -850,9 +906,14 @@ export async function deleteProject(projectId: string) {
 // プロジェクトメンバーを削除
 export async function deleteProjectMember(deletedUid: string, projectId: string) {
     try {
-        // projectMembersから削除対象を削除
         const projectMemberRef = collection(db, 'projectMembers');
-        await deleteDoc(doc(projectMemberRef, deletedUid));
+        const q = query(
+            projectMemberRef,
+            where('projectId', '==', projectId),
+            where('userId', '==', deletedUid),
+        );
+        const snapshot = await getDocs(q);
+        await Promise.all(snapshot.docs.map((d) => deleteDoc(d.ref)));
 
         // projectInvitesのstatusをleftにする
         const projectInviteRef = collection(db, 'projectInvites');
@@ -924,6 +985,21 @@ export async function getTaskCountByProjectId(projectId: string) {
         const q = query(taskRef, where('projectId', '==', projectId));
         const snapshot = await getDocs(q);
         return snapshot.size;
+    } catch (error) {
+        throw error;
+    }
+}
+// チームに紐づくプロジェクトを取得
+export async function getProjectsByTeamId(teamId: string) {
+    try {
+        const projectRef = collection(db, 'projects');
+        const q = query(projectRef, where('teamId', '==', teamId));
+        const snapshot = await getDocs(q);
+        const projects: Project[] = [];
+        snapshot.forEach((doc) => {
+            projects.push({ id: doc.id, ...doc.data() } as Project);
+        });
+        return projects;
     } catch (error) {
         throw error;
     }
@@ -1009,6 +1085,17 @@ export async function readNotification(notificationId: string) {
         const notificationRef = doc(db, 'notifications', notificationId);
         await updateDoc(notificationRef, {
             isRead: true,
+        });
+    } catch (error) {
+        throw error;
+    }
+}
+// 通知を未読にする
+export async function unreadNotification(notificationId: string) {
+    try {
+        const notificationRef = doc(db, 'notifications', notificationId);
+        await updateDoc(notificationRef, {
+            isRead: false,
         });
     } catch (error) {
         throw error;
@@ -1105,6 +1192,27 @@ export async function removeTeamMember(userId: string, teamId: string) {
     }
 }
 
+/**
+ * チームからユーザーを外し、そのチーム配下の全プロジェクトの projectMembers からも除く。
+ * （プロジェクト単体の削除とは別。チーム所属の整合のため）
+ */
+export async function removeUserFromTeamAndTeamProjects(
+    userId: string,
+    teamId: string,
+): Promise<void> {
+    await removeTeamMember(userId, teamId);
+    const projects = await getProjectsByTeamId(teamId);
+    await Promise.all(
+        projects.map(async (p) => {
+            try {
+                await deleteProjectMember(userId, p.id);
+            } catch {
+                // 当該プロジェクトに未参加の場合など
+            }
+        }),
+    );
+}
+
 // ユーザーIDが所属しているチームIDを取得
 export async function getTeamIdsByUserId(uid: string) {
     try {
@@ -1173,9 +1281,11 @@ export async function getTeamMembersByTeamId(teamId: string) {
 export async function getTasksByTeamId(teamId: string) {
     try {
         const taskRef = collection(db, 'tasks');
-        const q = query(taskRef, 
+        const q = query(
+            taskRef,
             where('teamId', '==', teamId),
             where('parentTaskId', '==', null),
+            where('projectId', '==', null),
         );
         const snapshot = await getDocs(q);
         const tasks: Task[] = [];

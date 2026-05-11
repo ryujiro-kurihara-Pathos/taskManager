@@ -1,5 +1,5 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { Team, TeamMember } from '../../types/team';
 import {
     addTeam as addTeamToFirestore,
@@ -15,6 +15,7 @@ import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { AuthService } from '../../services/auth.service';
 import { TasksService } from '../../services/tasks.service';
+import { userAvatarInitial } from '../../utils/user-avatar';
 
 /** 一覧表示用（タスク数・メンバー解決済み） */
 type TeamListRow = Team & {
@@ -32,6 +33,7 @@ export class TeamComponent implements OnInit {
     authState = inject(AuthStateService);
     authService = inject(AuthService);
     tasksService = inject(TasksService);
+    private router = inject(Router);
 
     teams = signal<TeamListRow[]>([]);
 
@@ -155,5 +157,15 @@ export class TeamComponent implements OnInit {
         } catch (error) {
             console.error('チーム追加失敗: ', error);
         }
+    }
+
+    avatarLetter(name: string | null | undefined): string {
+        return userAvatarInitial(name);
+    }
+
+    goMemberProfile(userId: string, event: Event): void {
+        event.preventDefault();
+        event.stopPropagation();
+        void this.router.navigate(['/profile', userId]);
     }
 }

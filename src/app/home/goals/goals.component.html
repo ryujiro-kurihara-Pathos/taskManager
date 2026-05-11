@@ -28,27 +28,64 @@
     @if (filteredGoals().length === 0) {
       <p class="goal-empty">この種類の目標はまだありません。</p>
     } @else {
+      <div class="goal-list-toolbar">
+        <span class="goal-list-count">{{ filteredGoals().length }} 件</span>
+      </div>
       <ul class="goal-card-list">
         @for (g of filteredGoals(); track g.id) {
-          @if (canView(g)) {
-            <li>
-              <button
-                type="button"
-                class="goal-card"
-                (click)="openDetail(g)"
-              >
-                <span class="goal-card-name">{{ g.title }}</span>
-                <span class="goal-card-meta">
-                  @if (g.dueDate) {
-                    期限 {{ g.dueDate }}
-                  } @else {
-                    期限未設定
-                  }
-                </span>
-                <span class="goal-card-status">{{ g.status }}</span>
-              </button>
-            </li>
-          }
+          @let listPct = goalListProgressFor(g.id);
+          <li>
+            <button type="button" class="goal-card" (click)="openDetail(g)">
+              <div class="goal-card-top">
+                <div class="goal-card-title-block">
+                  <h3 class="goal-card-title">{{ g.title }}</h3>
+                  <p class="goal-card-desc">{{ goalDescriptionPreview(g) }}</p>
+                </div>
+                <div class="goal-card-hero-meta">
+                  <div class="goal-card-progress" aria-label="関連タスクに基づく進捗">
+                    <span class="goal-card-progress-caption">進捗</span>
+                    @if (listPct !== null) {
+                      <div class="goal-card-progress-body">
+                        <span class="goal-card-progress-value">{{ listPct }}%</span>
+                        <div class="goal-card-progress-track" aria-hidden="true">
+                          <div class="goal-card-progress-fill" [style.width.%]="listPct"></div>
+                        </div>
+                      </div>
+                    } @else {
+                      <span class="goal-card-progress-placeholder">取得中…</span>
+                    }
+                  </div>
+                  <div class="goal-card-pills">
+                    <span class="goal-scope-pill">{{ goalScopeLabel(g.scope) }}</span>
+                    <span [ngClass]="goalPriorityPillClass(g.priority)">{{
+                      g.priority ?? '優先度未設定'
+                    }}</span>
+                    <span [ngClass]="goalStatusPillClass(g.status)">{{ g.status }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="goal-card-grid">
+                <div class="goal-stat">
+                  <span class="goal-stat-label">紐づき</span>
+                  <span class="goal-stat-value">{{ goalListContextLabel(g) }}</span>
+                </div>
+                <div class="goal-stat">
+                  <span class="goal-stat-label">期限</span>
+                  <span class="goal-stat-value">{{
+                    g.dueDate ? formatGoalDateShort(g.dueDate) : '未設定'
+                  }}</span>
+                </div>
+                <div class="goal-stat">
+                  <span class="goal-stat-label">更新</span>
+                  <span class="goal-stat-value">{{ formatGoalDateShort(g.updatedAt) }}</span>
+                </div>
+                <div class="goal-stat">
+                  <span class="goal-stat-label">作成</span>
+                  <span class="goal-stat-value">{{ formatGoalDateShort(g.createdAt) }}</span>
+                </div>
+              </div>
+            </button>
+          </li>
         }
       </ul>
     }
@@ -122,11 +159,13 @@
       }
     </div>
 
-    <section class="goal-progress-block" aria-label="進捗率">
+    <section class="goal-progress-block" aria-label="関連タスクに基づく進捗">
       <div class="goal-progress-label">
-        進捗率（表示時計算）
+        <span>関連タスクの進捗</span>
         @if (detailProgressPercent() !== null) {
-          <strong>{{ detailProgressPercent() }}%</strong>
+          <strong class="goal-progress-pct">{{ detailProgressPercent() }}%</strong>
+        } @else {
+          <span class="goal-progress-pct goal-progress-pct--muted">取得中…</span>
         }
       </div>
       <div class="goal-progress-bar" aria-hidden="true">
@@ -135,6 +174,7 @@
           [style.width.%]="detailProgressPercent() ?? 0"
         ></div>
       </div>
+      <p class="goal-progress-hint muted small">紐づいたタスクの「完了」件数から算出します。</p>
     </section>
 
     @if (canEdit(g)) {
@@ -279,40 +319,233 @@
     color: #666;
     font-size: 14px;
   }
+  .goal-list-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+  }
+  .goal-list-count {
+    font-size: 13px;
+    color: #5c5c5c;
+    font-weight: 600;
+  }
   .goal-card-list {
     list-style: none;
     margin: 0;
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
   }
   .goal-card {
     width: 100%;
     text-align: left;
-    display: grid;
-    grid-template-columns: 1fr auto auto;
+    display: flex;
+    flex-direction: column;
     gap: 12px;
-    align-items: center;
-    padding: 12px 14px;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
+    padding: 14px 16px;
+    border: 1px solid #e0e4e8;
+    border-radius: 12px;
     background: #fff;
     cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
   }
   .goal-card:hover {
-    background: #f9fafb;
+    background: #fafcfb;
+    border-color: #c8d4ca;
+    box-shadow: 0 4px 14px rgba(27, 82, 20, 0.08);
   }
-  .goal-card-name {
+  .goal-card-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .goal-card-title-block {
+    flex: 1;
+    min-width: 0;
+  }
+  .goal-card-title {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.35;
+  }
+  .goal-card-desc {
+    margin: 0;
+    font-size: 13px;
+    color: #5c5c5c;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .goal-card-hero-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .goal-card-progress {
+    text-align: right;
+    min-width: 104px;
+  }
+  .goal-card-progress-caption {
+    display: block;
+    font-size: 11px;
     font-weight: 600;
+    color: #6a736b;
+    letter-spacing: 0.02em;
+    margin-bottom: 4px;
   }
-  .goal-card-meta {
-    font-size: 13px;
-    color: #555;
+  .goal-card-progress-body {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
   }
-  .goal-card-status {
-    font-size: 13px;
+  .goal-card-progress-value {
+    font-size: 17px;
+    font-weight: 800;
     color: #1e3112;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .goal-card-progress-track {
+    width: 64px;
+    height: 7px;
+    background: #e8eee9;
+    border-radius: 999px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .goal-card-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #5cb85c, #4ea356);
+    border-radius: 999px;
+    transition: width 0.25s ease;
+    min-width: 0;
+  }
+  .goal-card-progress-placeholder {
+    font-size: 12px;
+    color: #8a928a;
+    font-variant-numeric: tabular-nums;
+  }
+  .goal-card-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .goal-scope-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #e8eee9;
+    color: #1e3112;
+    border: 1px solid #d5dcd6;
+  }
+  .goal-priority-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid transparent;
+  }
+  .goal-priority-pill--high {
+    background: #ffebee;
+    color: #c62828;
+    border-color: #ffcdd2;
+  }
+  .goal-priority-pill--mid {
+    background: #fff8e1;
+    color: #f57f17;
+    border-color: #ffe082;
+  }
+  .goal-priority-pill--low {
+    background: #eceff1;
+    color: #455a64;
+    border-color: #cfd8dc;
+  }
+  .goal-priority-pill--none {
+    background: #f5f5f5;
+    color: #757575;
+    border-color: #e0e0e0;
+    font-weight: 500;
+  }
+  .goal-status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid transparent;
+  }
+  .goal-status-pill--todo {
+    background: #e3f2fd;
+    color: #0d47a1;
+    border-color: #bbdefb;
+  }
+  .goal-status-pill--active {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border-color: #c8e6c9;
+  }
+  .goal-status-pill--hold {
+    background: #fff3e0;
+    color: #e65100;
+    border-color: #ffe0b2;
+  }
+  .goal-status-pill--done {
+    background: #f3e5f5;
+    color: #6a1b9a;
+    border-color: #e1bee7;
+  }
+  .goal-card-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px 16px;
+    padding-top: 4px;
+    border-top: 1px solid #eef0f3;
+  }
+  @media (max-width: 720px) {
+    .goal-card-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  .goal-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .goal-stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #888;
+    text-transform: uppercase;
+  }
+  .goal-stat-value {
+    font-size: 13px;
+    color: #222;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .goal-modal-backdrop {
     position: fixed;
@@ -411,8 +644,22 @@
   .goal-progress-label {
     display: flex;
     justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
     font-size: 13px;
     margin-bottom: 6px;
+  }
+  .goal-progress-pct {
+    font-size: 18px;
+    font-variant-numeric: tabular-nums;
+  }
+  .goal-progress-pct--muted {
+    font-size: 13px;
+    font-weight: 500;
+    color: #888;
+  }
+  .goal-progress-hint {
+    margin-top: 6px;
   }
   .goal-progress-bar {
     height: 8px;

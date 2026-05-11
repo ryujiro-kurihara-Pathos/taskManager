@@ -216,7 +216,7 @@
                 <td class="task-table-cell-priority">
                   <span class="task-pill" [ngClass]="priorityPillClass(task.priority)">{{ task.priority ?? '未設定' }}</span>
                 </td>
-                <td>
+                <td class="task-table-cell-tags">
                   @for (tag of task.tags ?? []; track tag.id) {
                     <span class="task-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
                   }
@@ -379,8 +379,24 @@
     <!-- カレンダー -->
     <div class="calendar-nav">
       <button class="calendar-btn" (click)="prevWeek()">前の週</button>
-      <button class="calendar-btn" (click)="today()">今日</button>
-      <button class="calendar-btn" (click)="nextWeek()">次の週</button>
+      <button
+        type="button"
+        class="calendar-btn calendar-btn-today"
+        (click)="today()"
+      >
+        今日
+      </button>
+      <button type="button" class="calendar-btn" (click)="nextWeek()">
+        次の週
+      </button>
+      <label class="calendar-show-done-label">
+        <input
+          type="checkbox"
+          [checked]="calendarShowCompletedTasks"
+          (change)="onCalendarShowCompletedChange($event)"
+        />
+        完了タスクも表示
+      </label>
     </div>
     <div
       class="calendar-board"
@@ -411,15 +427,109 @@
       <div class="task-layer">
         @for (task of sortedWeekTasks(); track task.id) {
           <button
+            type="button"
             class="sample-task-bar"
+            [ngClass]="calendarBarModifierClass(task)"
             (click)="openTaskModal('task-edit', task)"
             [style.top.px]="getTaskTop(task)"
             [style.left.%]="getTaskLeftPercent(task)"
             [style.width.%]="getTaskWidthPercent(task)"
+            [attr.title]="task.title + '（' + task.status + '）'"
           >
-            {{ task.title }}
+            @if (task.tags?.length) {
+              <span class="cal-bar-tags" aria-hidden="true">
+                @for (tag of task.tags!.slice(0, 6); track tag.id) {
+                  <span [class]="calendarTagDotClasses(tag)" [attr.title]="tag.name"></span>
+                }
+              </span>
+            }
+            <span class="cal-bar-title">{{ task.title }}</span>
           </button>
         }
+      </div>
+    </div>
+
+    <div class="calendar-legend" aria-label="カレンダー表示の凡例">
+      <div class="calendar-legend-section">
+        <span class="calendar-legend-heading">タスクの状態（帯の色）</span>
+        <div class="calendar-legend-row">
+          <span class="calendar-legend-item">
+            <span
+              class="calendar-legend-swatch cal-legend-bar cal-legend-bar--todo"
+              aria-hidden="true"
+            ></span>
+            未着手
+          </span>
+          <span class="calendar-legend-item">
+            <span
+              class="calendar-legend-swatch cal-legend-bar cal-legend-bar--inprogress"
+              aria-hidden="true"
+            ></span>
+            進行中
+          </span>
+          <span class="calendar-legend-item">
+            <span
+              class="calendar-legend-swatch cal-legend-bar cal-legend-bar--hold"
+              aria-hidden="true"
+            ></span>
+            保留
+          </span>
+          <span class="calendar-legend-item">
+            <span
+              class="calendar-legend-swatch cal-legend-bar cal-legend-bar--done"
+              aria-hidden="true"
+            ></span>
+            完了
+          </span>
+          <span class="calendar-legend-item">
+            <span
+              class="calendar-legend-swatch cal-legend-bar cal-legend-bar--overdue"
+              aria-hidden="true"
+            ></span>
+            期限超過（未完了で期日を過ぎた場合）
+          </span>
+          <span class="calendar-legend-item">
+            <span
+              class="calendar-legend-swatch cal-legend-bar cal-legend-bar--default"
+              aria-hidden="true"
+            ></span>
+            その他の状態
+          </span>
+        </div>
+      </div>
+      <div class="calendar-legend-section">
+        <span class="calendar-legend-heading">タグ（帯の左の丸）</span>
+        <div class="calendar-legend-row">
+          <span class="calendar-legend-item">
+            <span
+              class="cal-tag-dot cal-tag-dot--legend cal-tag-cat--work"
+              aria-hidden="true"
+            ></span>
+            仕事
+          </span>
+          <span class="calendar-legend-item">
+            <span
+              class="cal-tag-dot cal-tag-dot--legend cal-tag-cat--study"
+              aria-hidden="true"
+            ></span>
+            学習
+          </span>
+          <span class="calendar-legend-item">
+            <span
+              class="cal-tag-dot cal-tag-dot--legend cal-tag-cat--chore"
+              aria-hidden="true"
+            ></span>
+            家事
+          </span>
+          <span class="calendar-legend-item">
+            <span
+              class="cal-tag-dot cal-tag-dot--legend cal-tag-cat--personal"
+              aria-hidden="true"
+            ></span>
+            趣味
+          </span>
+          <span class="calendar-legend-item">※作成したタグの色は重複する場合があります。</span>
+        </div>
       </div>
     </div>
   }
@@ -728,19 +838,25 @@
   }
   .task-table-column-title {
     width: auto;
-    min-width: 0;
-    max-width: 40%;
+    min-width: 140px;
     overflow: hidden;
   }
-  .task-table-column-tags {
-    min-width: 180px;
-    width: min(22%, 200px);
+  .task-table-column-due-date {
+    min-width: 160px;
+    width: 22%;
   }
   .task-table-column-status {
-    width: 100px;
+    width: 96px;
+    min-width: 96px;
   }
   .task-table-column-priority {
-    width: 100px;
+    width: 96px;
+    min-width: 96px;
+  }
+  .task-table-column-tags {
+    width: 200px;
+    min-width: 160px;
+    max-width: 280px;
   }
   /* チェック列: 常時表示 */
   .task-table thead th.task-table-column-checkbox {
@@ -777,6 +893,23 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .done-task-table-wrapper .task-table-column-title {
+    width: auto;
+    min-width: 0;
+  }
+  .done-task-table-wrapper td.task-table-column-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .done-task-table-wrapper .task-table-column-tags {
+    width: 220px;
+    min-width: 140px;
+    max-width: 320px;
+  }
+  .done-task-table-wrapper td.task-table-column-tags {
+    white-space: normal;
   }
   .task-bulk-bar {
     display: flex;
@@ -843,9 +976,18 @@
   }
   .task-table-cell-due,
   .task-table-cell-progress,
-  .task-table-cell-priority,
-  .task-table-cell-tags {
+  .task-table-cell-priority {
     white-space: nowrap;
+  }
+  .task-table-cell-tags {
+    white-space: normal;
+    overflow: hidden;
+    vertical-align: middle;
+    max-width: 280px;
+  }
+  .task-table-cell-tags .task-pill {
+    margin: 2px 4px 2px 0;
+    vertical-align: middle;
   }
   .task-due-range {
     display: inline-block;
@@ -1117,14 +1259,30 @@
     background: #f5f5f5;
     border-color: #ccc;
   }
-  .calendar-nav .calendar-btn:nth-child(2) {
+  .calendar-nav .calendar-btn-today {
     background: #4ea356;
     color: #fff;
     border-color: #4ea356;
   }
-  .calendar-nav .calendar-btn:nth-child(2):hover {
+  .calendar-nav .calendar-btn-today:hover {
     background: #255c2b;
     border-color: #255c2b;
+  }
+  .calendar-show-done-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 4px;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+    user-select: none;
+  }
+  .calendar-show-done-label input {
+    cursor: pointer;
+    width: 15px;
+    height: 15px;
+    accent-color: #4ea356;
   }
 
   .calendar-board {
@@ -1214,22 +1372,205 @@
     cursor: pointer;
     position: absolute;
     height: 36px;
-    background: #f0e6a8;
-    display: flex;
+    display: inline-flex;
     align-items: center;
+    gap: 8px;
     padding: 0 10px;
     box-sizing: border-box;
-    border-radius: 4px;
+    border-radius: 6px;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
     font-size: 13px;
     font-weight: 500;
-    color: #333;
-    border: 1px solid #ddd4a0;
+    border: 1px solid transparent;
+    text-align: left;
+    max-width: 100%;
+  }
+  .cal-bar-title {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cal-bar-tags {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .cal-tag-dot {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+  }
+  .cal-tag-dot--legend {
+    width: 12px;
+    height: 12px;
+  }
+  .cal-tag-cat--work {
+    background: #1565c0;
+    border-color: #0d47a1;
+  }
+  .cal-tag-cat--study {
+    background: #6a1b9a;
+    border-color: #4a148c;
+  }
+  .cal-tag-cat--chore {
+    background: #e65100;
+    border-color: #bf360c;
+  }
+  .cal-tag-cat--personal {
+    background: #00897b;
+    border-color: #00695c;
+  }
+  .cal-tag-palette--red {
+    background: #ef5350;
+    border-color: #c62828;
+  }
+  .cal-tag-palette--orange {
+    background: #fb8c00;
+    border-color: #e65100;
+  }
+  .cal-tag-palette--yellow {
+    background: #fdd835;
+    border-color: #f9a825;
+  }
+  .cal-tag-palette--green {
+    background: #66bb6a;
+    border-color: #2e7d32;
+  }
+  .cal-tag-palette--teal {
+    background: #26a69a;
+    border-color: #00695c;
+  }
+  .cal-tag-palette--blue {
+    background: #42a5f5;
+    border-color: #1565c0;
+  }
+  .cal-tag-palette--indigo {
+    background: #5c6bc0;
+    border-color: #283593;
+  }
+  .cal-tag-palette--purple {
+    background: #ab47bc;
+    border-color: #6a1b9a;
+  }
+  .cal-tag-palette--pink {
+    background: #ec407a;
+    border-color: #ad1457;
+  }
+  .cal-tag-palette--gray {
+    background: #90a4ae;
+    border-color: #455a64;
+  }
+
+  /* カレンダー帯: ステータス（本体色） */
+  .sample-task-bar.cal-bar--todo {
+    background: #e3f2fd;
+    color: #0d47a1;
+    border-color: #90caf9;
+  }
+  .sample-task-bar.cal-bar--inprogress {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border-color: #a5d6a7;
+  }
+  .sample-task-bar.cal-bar--hold {
+    background: #fff3e0;
+    color: #e65100;
+    border-color: #ffcc80;
+  }
+  .sample-task-bar.cal-bar--done {
+    background: #f3e5f5;
+    color: #4a148c;
+    border-color: #ce93d8;
+  }
+  .sample-task-bar.cal-bar--overdue {
+    background: #ffcdd2;
+    color: #b71c1c;
+    border-color: #ef9a9a;
+    font-weight: 600;
+  }
+  .sample-task-bar.cal-bar--default {
+    background: #eceff1;
+    color: #37474f;
+    border-color: #cfd8dc;
   }
   .sample-task-bar:hover {
-    filter: brightness(0.97);
+    filter: brightness(0.96);
+  }
+
+  .calendar-legend {
+    margin-top: 16px;
+    padding: 14px 16px 16px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #334155;
+    box-sizing: border-box;
+  }
+  .calendar-legend-section + .calendar-legend-section {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+  }
+  .calendar-legend-heading {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #475569;
+    font-size: 12px;
+  }
+  .calendar-legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    align-items: center;
+  }
+  .calendar-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+  }
+  .calendar-legend-swatch {
+    flex-shrink: 0;
+    box-sizing: border-box;
+  }
+  .cal-legend-bar {
+    width: 22px;
+    height: 12px;
+    border-radius: 4px;
+  }
+  .cal-legend-bar--todo {
+    background: #e3f2fd;
+    border: 1px solid #90caf9;
+  }
+  .cal-legend-bar--inprogress {
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+  }
+  .cal-legend-bar--hold {
+    background: #fff3e0;
+    border: 1px solid #ffcc80;
+  }
+  .cal-legend-bar--done {
+    background: #f3e5f5;
+    border: 1px solid #ce93d8;
+  }
+  .cal-legend-bar--overdue {
+    background: #ffcdd2;
+    border: 1px solid #ef9a9a;
+  }
+  .cal-legend-bar--default {
+    background: #eceff1;
+    border: 1px solid #cfd8dc;
   }
 
 </style>

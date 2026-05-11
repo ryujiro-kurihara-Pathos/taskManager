@@ -7,7 +7,7 @@ import {
     getInviteStatus,
  } from '../../firestore';
 import { AuthStateService } from '../../services/auth-state.service';
-import { Notification } from '../../types/notification';
+import type { Notification } from '../../types/notification';
 import { ModalService } from '../../services/modal.service';
 import { AuthService } from '../../services/auth.service';
 import { TasksService } from '../../services/tasks.service';
@@ -22,10 +22,12 @@ export class InboxComponent {
     authState = inject(AuthStateService);
     authService = inject(AuthService);
     modalService = inject(ModalService);
-    private tasksService = inject(TasksService);
+    tasksService = inject(TasksService);
 
-    // 通知
-    notifications: Notification[] = [];
+    /** 受信トレイ一覧（TasksService と共有。モーダルからの未読化とも同期） */
+    get notifications(): Notification[] {
+        return this.tasksService.notifications();
+    }
     isReverseOrder: boolean = false;
     // タブ
     activeTab: 'all' | 'unread' | 'important' = 'all';
@@ -33,11 +35,12 @@ export class InboxComponent {
     async ngOnInit() {
         this.authService.watchAuthState(async(user) => {
             if(!user) {
-                this.notifications = [];
+                this.tasksService.notifications.set([]);
                 return;
             }
-            this.notifications = await this.getNotifications();
-        })
+            const notifications = await this.getNotifications();
+            this.tasksService.notifications.set(notifications);
+        });
     }
 
     // 詳細モーダルを開く
@@ -51,14 +54,8 @@ export class InboxComponent {
             modalState.data.status = status;
         });
 
-        // 通知を既読にする
-        this.notifications = this.notifications.map((item) => {
-                if (item.id === notification.id) {
-                    return { ...item, isRead: true };
-                }
-                return item;
-            }
-        )
+        // 通知を既読にする（一覧・バッジと同期）
+        this.tasksService.patchNotification(notification.id, { isRead: true });
     }
 
     // 招待を承諾
@@ -94,8 +91,10 @@ export class InboxComponent {
 
     // 未読通知を取得
     get unreadNotifications() {
-        const unreadNotifications = this.notifications.filter((notification) => !notification.isRead);
-        if(this.isReverseOrder) {
+        const unreadNotifications = this.tasksService
+            .notifications()
+            .filter((n) => !n.isRead);
+        if (this.isReverseOrder) {
             unreadNotifications.reverse();
         }
         return unreadNotifications;
@@ -103,8 +102,10 @@ export class InboxComponent {
 
     // 重要通知を取得
     get importantNotifications() {
-        const importantNotifications = this.notifications.filter((notification) => notification.isImportant);
-        if(this.isReverseOrder) {
+        const importantNotifications = this.tasksService
+            .notifications()
+            .filter((n) => n.isImportant);
+        if (this.isReverseOrder) {
             importantNotifications.reverse();
         }
         return importantNotifications;
@@ -112,13 +113,13 @@ export class InboxComponent {
 
     // 通知の表示
     get displayNotifications() {
-        const displayNotifications = this.notifications.sort((a, b) => {
-            if(!a.createdAt || !b.createdAt) return 0;
+        const displayNotifications = [...this.tasksService.notifications()].sort((a, b) => {
+            if (!a.createdAt || !b.createdAt) return 0;
             const aTime = this.tasksService.getTimeValue(a.createdAt);
             const bTime = this.tasksService.getTimeValue(b.createdAt);
             return bTime - aTime;
         });
-        if(this.isReverseOrder) {
+        if (this.isReverseOrder) {
             displayNotifications.reverse();
         }
         return displayNotifications;
@@ -126,7 +127,22 @@ export class InboxComponent {
 
     // 未読件数
     get unreadCount() {
-        return this.notifications.filter((n) => !n.isRead).length;
+        return this.tasksService.notifications().filter((n) => !n.isRead).length;
+    }
+
+    // すべてを既読にする
+    async markAllAsRead(items: Notification[]) {
+        try {
+            for (const notification of items) {
+                await readNotification(notification.id);
+            }
+            this.tasksService.notifications.update((list) =>
+                list.map((n) => ({ ...n, isRead: true })),
+            );
+        } catch (error) {
+            console.error('すべてを既読にする失敗: ', error);
+            throw error;
+        }
     }
 
     // 通知日時の表示

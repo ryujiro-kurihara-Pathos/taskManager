@@ -8,7 +8,7 @@ import {
  } from '../firestore';
 import { FilterKey, SortKey, Task, initialTask } from '../types/task';
 import { AuthStateService } from './auth-state.service';
-import { AddNotificationInput } from '../types/notification';
+import type { AddNotificationInput, Notification } from '../types/notification';
 import { User } from '../types/user';
 import { Tag } from '../types/task';
 
@@ -95,7 +95,12 @@ export class TasksService {
                 (task) => task.projectId === null && task.teamId === null,
             );
         }
-        return all.filter((task) => task.teamId === ctx.teamId);
+        return all.filter(
+            (task) =>
+                task.teamId === ctx.teamId &&
+                task.projectId === null &&
+                task.parentTaskId === null,
+        );
     });
     // 表示形式
     displayFormat: 'list' | 'board' | 'calendar' = 'list';
@@ -614,5 +619,15 @@ export class TasksService {
         const d = new Date(value as string);
         const t = d.getTime();
         return Number.isNaN(t) ? null : t;
+    }
+
+    // 通知（受信トレイとモーダルで共有）
+    notifications = signal<Notification[]>([]);
+
+    /** Firestore 以外で一覧の表示用状態を合わせる（既読・未読など） */
+    patchNotification(id: string, patch: Partial<Notification>): void {
+        this.notifications.update((list) =>
+            list.map((n) => (n.id === id ? { ...n, ...patch } : n)),
+        );
     }
 }

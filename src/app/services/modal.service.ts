@@ -11,6 +11,7 @@ import {
 } from '../firestore';
 import { Task } from '../types/task';
 import { TeamMember } from '../types/team';
+import { Project } from '../types/project';
 import { AuthStateService } from './auth-state.service';
 
 type ModalType =
@@ -19,11 +20,9 @@ type ModalType =
 'project-edit' |
 'team-edit' |
 'project-invite' |
-'project-member-list' |
 'notification-detail' |
 'project-add-task' |
 'team-task-detail' |
-'team-member-detail' |
 null;
 
 export interface ModalState {
@@ -51,17 +50,17 @@ export class ModalService {
         // モーダルのデータを取得
         data = await this.getTaskEditData(type, data);
 
-        // チームメンバーのデータを取得
-        data = await this.getTeamMemberDetailData(type, data);
+        data = await this.enrichTeamEditMembers(type, data);
+        data = await this.enrichProjectEditMembers(type, data);
 
         data = await this.enrichNotificationDetail(type, data);
 
-        if(data) {
-            // 担当者候補を取得
-            if(data.projectId) {
+        if (data) {
+            const teamScopeId = data.teamId ?? (type === 'team-edit' ? data.id : null);
+            if (data.projectId) {
                 data.assignableUsers = await getProjectTaskAssignableUsers(data.projectId);
-            } else if(data.teamId) {
-                data.assignableUsers = await getTeamTaskAssignableUsers(data.teamId);
+            } else if (teamScopeId) {
+                data.assignableUsers = await getTeamTaskAssignableUsers(teamScopeId);
             } else {
                 data.assignableUsers = [];
             }
@@ -163,21 +162,42 @@ export class ModalService {
         return notification;
     }
 
-    // チームメンバーの情報を取得
-    async getTeamMemberDetailData(type: ModalType, members: TeamMember[]) {
-        if (type !== 'team-member-detail') return members;
+    /** チーム編集モーダル用: teamMembers に user を付与 */
+    async enrichTeamEditMembers(type: ModalType, data: any) {
+        if (type !== 'team-edit' || !data?.teamMembers?.length) {
+            return data;
+        }
         try {
-            const users = await getUsers(members.map((member) => member.userId));
+            const members = data.teamMembers as TeamMember[];
+            const users = await getUsers(members.map((m) => m.userId));
             users.forEach((user) => {
-                const member = members.find((member) => member.userId === user.id);
-                if(member) {
-                    member.user = user;
-                }
-            })
-            return members;
+                const member = members.find((m) => m.userId === user.id);
+                if (member) member.user = user;
+            });
+            return data;
         } catch (error) {
-            console.error("チームメンバーの情報を取得できませんでした", error);
-            return [];
+            console.error('チームメンバー情報の取得に失敗しました', error);
+            return data;
+        }
+    }
+
+    /** プロジェクト編集モーダル用: projectMembers に user を付与 */
+    async enrichProjectEditMembers(type: ModalType, data: any) {
+        if (type !== 'project-edit' || !data?.projectMembers?.length) {
+            return data;
+        }
+        try {
+            const project = data as Project;
+            const users = await getUsers(
+                project.projectMembers!.map((m) => m.userId),
+            );
+            project.projectMembers!.forEach((m) => {
+                m.user = users.find((u) => u.id === m.userId) ?? null;
+            });
+            return project;
+        } catch (error) {
+            console.error('プロジェクトメンバー情報の取得に失敗しました', error);
+            return data;
         }
     }
 

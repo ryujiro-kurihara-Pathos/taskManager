@@ -1,7 +1,7 @@
 
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getAuth, useDeviceLanguage } from "firebase/auth";
 
 // 接続するプロジェクト情報
 const firebaseConfig = {
@@ -20,3 +20,6 @@ const app = initializeApp(firebaseConfig);
 // Firestore, Authenticationの初期化
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+// 確認メール等の言語をブラウザに合わせる（日本語環境では日本語テンプレートになりやすい）
+useDeviceLanguage(auth);

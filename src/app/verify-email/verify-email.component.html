@@ -1,0 +1,19 @@
+<div class="verify-email">
+    <div class="card">
+        <h1>メールアドレスの確認</h1>
+        <p class="lead">
+            登録したアドレス宛に確認メールを送りました。本文のリンクを開くと利用を開始できます。
+        </p>
+        <p class="email" *ngIf="email">{{ email }}</p>
+        <div class="actions">
+            <button type="button" class="primary" (click)="onReloadAndContinue()" [disabled]="reloadBusy">
+                {{ reloadBusy ? '確認中…' : '確認済みで続ける' }}
+            </button>
+            <button type="button" class="secondary" (click)="onResend()" [disabled]="resendBusy">
+                {{ resendBusy ? '送信中…' : '確認メールを再送信' }}
+            </button>
+            <button type="button" class="link" (click)="onLogout()">別のアカウントでログイン</button>
+        </div>
+        <a routerLink="/login" class="back">ログイン画面へ</a>
+    </div>
+</div>

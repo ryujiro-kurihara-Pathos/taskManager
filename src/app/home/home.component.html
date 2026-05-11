@@ -23,7 +23,6 @@
     <aside class="left-side" id="app-sidebar" [class.closed]="!isSidebarOpen" [attr.aria-hidden]="!isSidebarOpen">
       <div class="sidebar">
         <p class="sidebar-title">Task Manager</p>
-        <p class="sidebar-subtitle">ナビゲーション</p>
         <nav class="sidebar-menu" aria-label="メインメニュー">
           <a class="sidebar-menu-btn"
           (click)="tasksService.clearTasks()"
@@ -42,8 +41,8 @@
           routerLink="/home/goals" routerLinkActive="active">ゴール</a>
         </nav>
       </div>
-      <a class="profile" routerLink="/profile" tabindex="0">
-        <div class="profile-circle" aria-hidden="true"></div>
+      <a class="profile" [routerLink]="authState.uid ? ['/profile', authState.uid] : '/profile'" tabindex="0">
+        <div class="profile-circle" aria-hidden="true">{{ avatarLetter(authState.userName) }}</div>
         <span class="profile-name">{{ authState.userName }}</span>
       </a>
     </aside>
@@ -106,9 +105,17 @@
               />
             </div>
             <div class="edit-task-item edit-task-tags">
-              <div class="edit-label-wrapper">
-                <p class="edit-label">タグ</p>
-                <button type="button" class="edit-label-edit-btn" (click)="toggleTagDefinitionsEdit()">
+              <div class="edit-task-tags-header">
+                <p class="edit-label edit-label--tags">タグ</p>
+                <button
+                  type="button"
+                  class="tag-def-toggle-btn"
+                  [class.tag-def-toggle-btn--open]="tagDefinitionsEditMode"
+                  (click)="toggleTagDefinitionsEdit()"
+                  [disabled]="isTagDefinitionsToggleDisabled()"
+                  [attr.aria-expanded]="tagDefinitionsEditMode"
+                  [attr.aria-pressed]="tagDefinitionsEditMode"
+                >
                   {{ tagDefinitionsEditMode ? '閉じる' : '編集' }}
                 </button>
               </div>
@@ -278,9 +285,17 @@
               >
             </div>
             <div class="edit-task-item edit-task-tags">
-              <div class="edit-label-wrapper">
-                <p class="edit-label">タグ</p>
-                <button type="button" class="edit-label-edit-btn" (click)="toggleTagDefinitionsEdit()" [disabled]="isTaskModalReadOnly()">
+              <div class="edit-task-tags-header">
+                <p class="edit-label edit-label--tags">タグ</p>
+                <button
+                  type="button"
+                  class="tag-def-toggle-btn"
+                  [class.tag-def-toggle-btn--open]="tagDefinitionsEditMode"
+                  (click)="toggleTagDefinitionsEdit()"
+                  [disabled]="isTagDefinitionsToggleDisabled()"
+                  [attr.aria-expanded]="tagDefinitionsEditMode"
+                  [attr.aria-pressed]="tagDefinitionsEditMode"
+                >
                   {{ tagDefinitionsEditMode ? '閉じる' : '編集' }}
                 </button>
               </div>
@@ -319,10 +334,12 @@
                           [(ngModel)]="tag.name"
                           placeholder="タグ名"
                           [disabled]="isTaskModalReadOnly()"
-                        />
-                        <button type="button" class="task-tag-delete-def-btn" (click)="deleteTagDefinition(tag)" [disabled]="isTaskModalReadOnly()">
-                          削除
-                        </button>
+                        />　
+                        @if(!tag.isDefault) {
+                          <button type="button" class="task-tag-delete-def-btn" (click)="deleteTagDefinition(tag)" [disabled]="isTaskModalReadOnly()">
+                            削除
+                          </button>
+                        }
                         <div class="tag-color-palette tag-color-palette--compact" aria-label="タグ色">
                           @for (c of tagColorPresets; track c) {
                             <button
@@ -393,18 +410,50 @@
                 }
               </div>
             </div>
-            <div class="edit-task-item">
-              <p class="edit-label">コメント</p>
-              <input type="text" [(ngModel)]="commentContent" placeholder="コメントを入力してください" [disabled]="isTaskModalReadOnly()" />
-              <button class="edit-task-comment-add-btn" type="button" (click)="addComment(modalState.data.id)" [disabled]="isTaskModalReadOnly()">コメント</button>
-              <div class="edit-task-comments-container">
-                @for (comment of modalState.data.comments; track comment.id) {
-                  <p class="edit-task-comment-content">{{ comment.content }}</p>
-                  <p class="edit-task-comment-time">{{ tasksService.displayTime(comment.createdAt, 'time') }}</p>
-                  <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)" [disabled]="isTaskModalReadOnly()">
-                    削除
+            <div class="edit-task-item edit-task-comments-item">
+              <p class="edit-label edit-task-comments-label">コメント</p>
+              <div class="edit-task-comments-panel">
+                <div class="edit-task-comment-composer">
+                  <textarea
+                    class="edit-task-comment-input"
+                    rows="2"
+                    [(ngModel)]="commentContent"
+                    name="taskEditComment"
+                    placeholder="コメントを入力…"
+                    [disabled]="isTaskModalReadOnly()"
+                  ></textarea>
+                  <button
+                    class="edit-task-comment-send-btn"
+                    type="button"
+                    (click)="addComment(modalState.data.id)"
+                    [disabled]="isTaskModalReadOnly() || !commentContent.trim()"
+                  >
+                    投稿
                   </button>
-                }
+                </div>
+                <div class="edit-task-comments-scroll" role="log" aria-label="コメント一覧">
+                  @for (comment of modalCommentsSorted(modalState.data.comments); track comment.id) {
+                    <article class="edit-task-comment-card">
+                      <div class="edit-task-comment-card-head">
+                        <span class="edit-task-comment-author">{{ commentAuthorLabel(comment.uid) }}</span>
+                        <time class="edit-task-comment-time">{{
+                          tasksService.displayTime(comment.createdAt, 'date')
+                        }}</time>
+                        <button
+                          class="edit-task-comment-delete-btn"
+                          type="button"
+                          (click)="deleteComment(comment.id)"
+                          [disabled]="isTaskModalReadOnly()"
+                        >
+                          削除
+                        </button>
+                      </div>
+                      <p class="edit-task-comment-body">{{ comment.content }}</p>
+                    </article>
+                  } @empty {
+                    <p class="edit-task-comments-empty">まだコメントはありません。</p>
+                  }
+                </div>
               </div>
             </div>
           </div>
@@ -431,9 +480,16 @@
                   [(ngModel)]="modalState.data.name"
                   placeholder="プロジェクト名を入力してください"
                   class="project-edit-input"
+                  [disabled]="!projectEditCanEditBasics"
                 />
                 <label class="project-edit-label" for="proj-edit-vis">公開設定</label>
-                <select id="proj-edit-vis" name="visibility" [(ngModel)]="modalState.data.visibility" class="project-edit-input">
+                <select
+                  id="proj-edit-vis"
+                  name="visibility"
+                  [(ngModel)]="modalState.data.visibility"
+                  class="project-edit-input"
+                  [disabled]="!projectEditCanEditBasics"
+                >
                   <option value="private">非公開</option>
                   <option value="members">公開</option>
                 </select>
@@ -444,23 +500,79 @@
                   placeholder="プロジェクトの説明を入力してください"
                   class="project-edit-input project-edit-textarea"
                   rows="3"
+                  [disabled]="!projectEditCanEditBasics"
                 ></textarea>
+                @if (!projectEditCanEditBasics && projectEditCanManageMembers) {
+                  <p class="project-edit-section-hint">基本情報の編集はプロジェクトオーナーのみが行えます。</p>
+                }
               </div>
             </section>
+            @if (projectEditCanManageMembers) {
             <section class="project-edit-section">
               <h3 class="project-edit-section-title">メンバー招待</h3>
               <p class="project-edit-section-hint">招待したユーザーに通知が送信されます。</p>
-              <div class="modal-content-email-input-container project-edit-invite-row">
-                <input type="email" [(ngModel)]="inviteEmail" placeholder="メールアドレスを入力してください" />
-                <button class="project-invite-btn" type="button" (click)="invite('project', modalState.data.id, false)">招待</button>
+              <div class="invite-email-block">
+                <div class="modal-content-email-input-container project-edit-invite-row">
+                  <input
+                    type="email"
+                    [(ngModel)]="inviteEmail"
+                    (ngModelChange)="onInviteEmailInput($event)"
+                    placeholder="メールアドレスを入力してください"
+                  />
+                  <button class="project-invite-btn" type="button" (click)="invite('project', modalState.data.id, false)">招待</button>
+                </div>
+                @if (inviteFeedbackMessage) {
+                  <p class="invite-feedback" [class.invite-feedback--success]="inviteFeedbackSuccess" [class.invite-feedback--error]="!inviteFeedbackSuccess">
+                    {{ inviteFeedbackMessage }}
+                  </p>
+                }
               </div>
             </section>
+            <section class="project-edit-section">
+              <h3 class="project-edit-section-title">メンバー一覧</h3>
+              <p class="project-edit-section-hint">
+                プロジェクトから外すと、そのプロジェクトのタスクのみ閲覧できなくなります（チーム所属は維持されます）。
+              </p>
+              <div class="team-edit-member-list">
+                @for (member of modalState.data.projectMembers ?? []; track member.id) {
+                  <div class="team-member-item team-member-item--edit">
+                    <a
+                      class="team-member-item-icon team-member-item-icon--link"
+                      [routerLink]="['/profile', member.userId]"
+                      (click)="$event.stopPropagation()"
+                      [attr.title]="member.user?.userName ?? 'プロフィール'"
+                    >
+                      <span>{{ avatarLetter(member.user?.userName) }}</span>
+                    </a>
+                    <p class="team-member-item-name">{{ member.user?.userName ?? '（ユーザー）' }}</p>
+                    @if (
+                      projectEditCanManageMembers &&
+                      member.userId !== modalState.data.ownerId &&
+                      member.userId !== authState.uid
+                    ) {
+                      <button
+                        type="button"
+                        class="member-remove-btn"
+                        (click)="deleteProjectMemberFromEdit(member.userId, modalState.data.id)"
+                      >
+                        プロジェクトから外す
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            </section>
+            }
           </div>
           <div class="modal-footer project-edit-footer">
-            <button class="project-edit-save-btn" type="button" (click)="saveProjectEdit(modalState.data)">保存</button>
+            @if (projectEditCanEditBasics) {
+              <button class="project-edit-save-btn" type="button" (click)="saveProjectEdit(modalState.data)">保存</button>
+            }
             <div class="project-edit-danger-actions">
               <button class="project-edit-leave-btn" type="button" (click)="leaveProjectFromEdit(modalState.data)">プロジェクトから退出</button>
-              <button class="project-edit-delete-btn" type="button" (click)="deleteProject(modalState.data)">プロジェクトを削除</button>
+              @if (projectEditCanDeleteProject) {
+                <button class="project-edit-delete-btn" type="button" (click)="deleteProject(modalState.data)">プロジェクトを削除</button>
+              }
             </div>
           </div>
         </div>
@@ -483,6 +595,7 @@
                   [(ngModel)]="modalState.data.name"
                   placeholder="チーム名を入力してください"
                   class="project-edit-input"
+                  [disabled]="!teamEditCanEditBasics"
                 />
                 <label class="project-edit-label" for="team-edit-desc">説明</label>
                 <textarea
@@ -491,23 +604,79 @@
                   placeholder="チームの説明を入力してください"
                   class="project-edit-input project-edit-textarea"
                   rows="3"
+                  [disabled]="!teamEditCanEditBasics"
                 ></textarea>
+                @if (!teamEditCanEditBasics && teamEditCanManageMembers) {
+                  <p class="project-edit-section-hint">チーム名・説明の編集はチームオーナーのみが行えます。</p>
+                }
               </div>
             </section>
+            @if (teamEditCanManageMembers) {
             <section class="project-edit-section">
               <h3 class="project-edit-section-title">メンバー招待</h3>
               <p class="project-edit-section-hint">招待したユーザーに通知が送信されます。</p>
-              <div class="modal-content-email-input-container project-edit-invite-row">
-                <input type="email" [(ngModel)]="inviteEmail" placeholder="メールアドレスを入力してください" />
-                <button class="project-invite-btn" type="button" (click)="invite('team', modalState.data.id, false)">招待</button>
+              <div class="invite-email-block">
+                <div class="modal-content-email-input-container project-edit-invite-row">
+                  <input
+                    type="email"
+                    [(ngModel)]="inviteEmail"
+                    (ngModelChange)="onInviteEmailInput($event)"
+                    placeholder="メールアドレスを入力してください"
+                  />
+                  <button class="project-invite-btn" type="button" (click)="invite('team', modalState.data.id, false)">招待</button>
+                </div>
+                @if (inviteFeedbackMessage) {
+                  <p class="invite-feedback" [class.invite-feedback--success]="inviteFeedbackSuccess" [class.invite-feedback--error]="!inviteFeedbackSuccess">
+                    {{ inviteFeedbackMessage }}
+                  </p>
+                }
               </div>
             </section>
+            <section class="project-edit-section">
+              <h3 class="project-edit-section-title">メンバー一覧</h3>
+              <p class="project-edit-section-hint">
+                チームから外すと、このチーム直下のタスクと全プロジェクトへのアクセスが失われます。
+              </p>
+              <div class="team-edit-member-list">
+                @for (member of modalState.data.teamMembers ?? []; track member.id) {
+                  <div class="team-member-item team-member-item--edit">
+                    <a
+                      class="team-member-item-icon team-member-item-icon--link"
+                      [routerLink]="['/profile', member.userId]"
+                      (click)="$event.stopPropagation()"
+                      [attr.title]="member.user?.userName ?? 'プロフィール'"
+                    >
+                      <span>{{ avatarLetter(member.user?.userName) }}</span>
+                    </a>
+                    <p class="team-member-item-name">{{ member.user?.userName ?? '（ユーザー）' }}</p>
+                    @if (
+                      teamEditCanManageMembers &&
+                      member.userId !== modalState.data.ownerId &&
+                      member.userId !== authState.uid
+                    ) {
+                      <button
+                        type="button"
+                        class="member-remove-btn"
+                        (click)="removeTeamMemberFromEdit(member.userId, modalState.data.id)"
+                      >
+                        チームから外す
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            </section>
+            }
           </div>
           <div class="modal-footer project-edit-footer">
-            <button class="project-edit-save-btn" type="button" (click)="saveTeamEdit(modalState.data)">保存</button>
+            @if (teamEditCanEditBasics) {
+              <button class="project-edit-save-btn" type="button" (click)="saveTeamEdit(modalState.data)">保存</button>
+            }
             <div class="project-edit-danger-actions">
               <button class="project-edit-leave-btn" type="button" (click)="leaveTeamFromEdit(modalState.data)">チームから退出</button>
-              <button class="project-edit-delete-btn" type="button" (click)="deleteTeamFromEdit(modalState.data)">チームを削除</button>
+              @if (teamEditCanDeleteTeam) {
+                <button class="project-edit-delete-btn" type="button" (click)="deleteTeamFromEdit(modalState.data)">チームを削除</button>
+              }
             </div>
           </div>
         </div>
@@ -522,33 +691,22 @@
           <div class="modal-body">
             <div class="modal-content-item">
               <p class="modal-content-label">メールで招待</p>
-              <div class="modal-content-email-input-container">
-                <input type="email" [(ngModel)]="inviteEmail" placeholder="メールアドレスを入力してください" />
-                <button class="project-invite-btn" type="button" (click)="invite('project', modalState.data.id)">招待</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    } @else if (modalState.type === 'project-member-list') {
-      <div class="modal" (click)="closeModal()">
-        <div class="modal-form" (click)="$event.stopPropagation()">
-          <div class="modal-top">
-            <p>{{ modalState.data.name }}のメンバー</p>
-            <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
-          </div>
-          <div class="modal-body">
-            <div class="modal-project-member-list">
-              @for (member of modalState.data.projectMembers; track member.id) {
-                <div class="modal-project-member">
-                  <button class="member-btn">
-                    <p>{{ member.user?.userName }}</p>
-                  </button>
-                  <button class="member-remove-btn" (click)="deleteProjectMember(member.userId, modalState.data.id)">
-                    削除
-                  </button>
+              <div class="invite-email-block">
+                <div class="modal-content-email-input-container">
+                  <input
+                    type="email"
+                    [(ngModel)]="inviteEmail"
+                    (ngModelChange)="onInviteEmailInput($event)"
+                    placeholder="メールアドレスを入力してください"
+                  />
+                  <button class="project-invite-btn" type="button" (click)="invite('project', modalState.data.id)">招待</button>
                 </div>
-              }
+                @if (inviteFeedbackMessage) {
+                  <p class="invite-feedback" [class.invite-feedback--success]="inviteFeedbackSuccess" [class.invite-feedback--error]="!inviteFeedbackSuccess">
+                    {{ inviteFeedbackMessage }}
+                  </p>
+                }
+              </div>
             </div>
           </div>
         </div>
@@ -561,7 +719,18 @@
               <p class="notification-detail-eyebrow">受信トレイ</p>
               <p class="notification-detail-heading">通知の詳細</p>
             </div>
-            <button class="close-modal-btn notification-detail-close" type="button" (click)="closeModal()" aria-label="閉じる">×</button>
+            <div class="notification-detail-header-actions">
+              @if (modalState.data.isRead) {
+                <button
+                  type="button"
+                  class="notification-detail-btn notification-detail-btn--ghost notification-detail-btn--compact"
+                  (click)="markAsUnread(modalState.data)"
+                >
+                  未読にする
+                </button>
+              }
+              <button class="close-modal-btn notification-detail-close" type="button" (click)="closeModal()" aria-label="閉じる">×</button>
+            </div>
           </div>
           <div class="modal-body notification-detail-body">
             <div class="notification-detail-hero">
@@ -591,6 +760,19 @@
               <div class="notification-detail-message-card">
                 @if (modalState.data.type === 'task-deadline') {
                   <p class="notification-detail-from notification-detail-from--system">自動通知</p>
+                } @else if (
+                  modalState.data.type === 'project-invite' || modalState.data.type === 'team-invite'
+                ) {
+                  <p class="notification-detail-from notification-detail-from--invite-summary">
+                    <span class="notification-detail-from-name">{{ notificationSenderName(modalState.data) }}</span>
+                    <span class="notification-detail-from-meta">（招待者）から</span>
+                    <strong class="notification-detail-invite-target">{{
+                      notificationInviteTargetName || '…'
+                    }}</strong>
+                    <span class="notification-detail-from-meta"
+                      >への</span
+                    >
+                  </p>
                 } @else {
                   <p class="notification-detail-from">
                     <span class="notification-detail-from-role">{{ notificationSenderRoleLabel(modalState.data.type) }}</span>
@@ -743,17 +925,50 @@
                 }
               </div>
             </div>
-            <div class="edit-task-item">
-              <p class="edit-label">コメント</p>
-              <input type="text" [(ngModel)]="commentContent" placeholder="コメントを入力してください" [disabled]="isTaskModalReadOnly()" />
-              <button class="edit-task-comment-add-btn" type="button" (click)="addComment(modalState.data.id)" [disabled]="isTaskModalReadOnly()">コメント</button>
-              <div class="edit-task-comments-container">
-                @for (comment of modalState.data.comments; track comment.id) {
-                  <p class="edit-task-comment-content">{{ comment.content }}</p>
-                  <button class="edit-task-comment-delete-btn" type="button" (click)="deleteComment(comment.id)" [disabled]="isTaskModalReadOnly()">
-                    削除
+            <div class="edit-task-item edit-task-comments-item">
+              <p class="edit-label edit-task-comments-label">コメント</p>
+              <div class="edit-task-comments-panel">
+                <div class="edit-task-comment-composer">
+                  <textarea
+                    class="edit-task-comment-input"
+                    rows="2"
+                    [(ngModel)]="commentContent"
+                    name="teamTaskComment"
+                    placeholder="コメントを入力…"
+                    [disabled]="isTaskModalReadOnly()"
+                  ></textarea>
+                  <button
+                    class="edit-task-comment-send-btn"
+                    type="button"
+                    (click)="addComment(modalState.data.id)"
+                    [disabled]="isTaskModalReadOnly() || !commentContent.trim()"
+                  >
+                    投稿
                   </button>
-                }
+                </div>
+                <div class="edit-task-comments-scroll" role="log" aria-label="コメント一覧">
+                  @for (comment of modalCommentsSorted(modalState.data.comments); track comment.id) {
+                    <article class="edit-task-comment-card">
+                      <div class="edit-task-comment-card-head">
+                        <span class="edit-task-comment-author">{{ commentAuthorLabel(comment.uid) }}</span>
+                        <time class="edit-task-comment-time">{{
+                          tasksService.displayTime(comment.createdAt, 'date')
+                        }}</time>
+                        <button
+                          class="edit-task-comment-delete-btn"
+                          type="button"
+                          (click)="deleteComment(comment.id)"
+                          [disabled]="isTaskModalReadOnly()"
+                        >
+                          削除
+                        </button>
+                      </div>
+                      <p class="edit-task-comment-body">{{ comment.content }}</p>
+                    </article>
+                  } @empty {
+                    <p class="edit-task-comments-empty">まだコメントはありません。</p>
+                  }
+                </div>
               </div>
             </div>
           </div>
@@ -761,35 +976,10 @@
           <button class="edit-task-delete-btn" type="button" (click)="deleteTask(modalState.data.id)" [disabled]="!canDeleteRootModalTask()">削除</button>
         </div>
       </div>
-    } @else if (modalState.type === 'team-member-detail') {
-      <div class="modal" (click)="closeModal()">
-        <div class="modal-form" (click)="$event.stopPropagation()">
-          <div class="modal-top">
-            <p>チームメンバー</p>
-            <button class="close-modal-btn" type="button" (click)="closeModal()">×</button>
-          </div>
-          <div class="modal-body">
-            @for (member of modalState.data; track member.id) {
-              <div class="team-member-item">
-                <div class="team-member-item-icon">
-                  <span>{{ member.user?.userName.charAt(0) }}</span>
-                </div>
-                <p>{{ member.user?.userName }}</p>
-              </div>
-            }
-            <input type="text" [(ngModel)]="inviteEmail" placeholder="メールアドレスを入力してください" />
-            <button class="modal-footer-btn" (click)="invite('team', modalState.data[0].teamId ?? '')">
-              招待
-            </button>
-          </div>
-          <div class="modal-footer">
-          </div>
-        </div>
-      </div>
     }
   }
 
-
+  <app-confirm-dialog />
 </div>
 
 <style>
@@ -952,14 +1142,6 @@
     letter-spacing: 0.02em;
     line-height: 1.25;
   }
-  .sidebar-subtitle {
-    margin: 0 0 12px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.45);
-  }
   .sidebar-menu {
     display: flex;
     flex-direction: column;
@@ -1026,6 +1208,22 @@
     border: 2px solid rgba(255, 255, 255, 0.35);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1f3d24;
+  }
+  .team-member-item-icon--link {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+  }
+  .team-member-item-icon--link:hover {
+    opacity: 0.92;
+    outline: 2px solid rgba(78, 163, 86, 0.5);
+    outline-offset: 1px;
   }
   .profile-name {
     margin: 0;
@@ -1236,6 +1434,23 @@
     line-height: 1.45;
     font-family: inherit;
   }
+  .invite-email-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+  }
+  .invite-feedback {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .invite-feedback--success {
+    color: #1b5e20;
+  }
+  .invite-feedback--error {
+    color: #b3261e;
+  }
   .modal-content-email-input-container {
     display: flex;
     flex-wrap: wrap;
@@ -1430,7 +1645,68 @@
     border-color: #1b5214;
   }
   .edit-task-tags {
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+    flex-basis: 100%;
+  }
+  .edit-task-tags-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 12px;
+    width: 100%;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eef0f3;
+    box-sizing: border-box;
+  }
+  .edit-label--tags {
+    min-width: 0;
+    margin: 0;
+    font-weight: 600;
+    color: #374151;
+  }
+  .tag-def-toggle-btn {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 7px 16px;
+    border-radius: 999px;
+    border: 1px solid #c5ddc8;
+    background: #f6fbf6;
+    color: #1f4a24;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .tag-def-toggle-btn:hover:not(:disabled) {
+    background: #e8f4ea;
+    border-color: #4ea356;
+    box-shadow: 0 1px 2px rgba(37, 92, 43, 0.08);
+  }
+  .tag-def-toggle-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(78, 163, 86, 0.35);
+  }
+  .tag-def-toggle-btn--open {
+    background: #4ea356;
+    border-color: #3d8f45;
+    color: #fff;
+  }
+  .tag-def-toggle-btn--open:hover:not(:disabled) {
+    background: #255c2b;
+    border-color: #255c2b;
+  }
+  .tag-def-toggle-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
   }
   .task-add-tag-column {
     flex: 1;
@@ -1661,6 +1937,7 @@
     background: transparent;
     font-size: 14px;
     box-sizing: border-box;
+    cursor: pointer;
   }
   .edit-task-subtask-input:focus {
     outline: none;
@@ -1755,23 +2032,137 @@
     margin-bottom: 0;
     padding-bottom: 0;
   }
-  .edit-task-modal .edit-task-comments-container {
-    flex-basis: 100%;
+  .edit-task-comments-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .edit-task-comments-item .edit-task-comments-label {
+    min-width: 0;
+    margin-bottom: 0;
+  }
+  .edit-task-comments-panel {
     width: 100%;
-    margin-top: 8px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    background: #f8f9f8;
-    border: 1px solid #ececec;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     box-sizing: border-box;
   }
-  .edit-task-modal .edit-task-comment-content {
-    margin: 0 0 8px;
+  .edit-task-comment-composer {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+  }
+  @media (min-width: 520px) {
+    .edit-task-comment-composer {
+      flex-direction: row;
+      align-items: flex-end;
+    }
+    .edit-task-comment-input {
+      flex: 1;
+      min-width: 0;
+    }
+    .edit-task-comment-send-btn {
+      flex-shrink: 0;
+    }
+  }
+  .edit-task-comment-input {
+    width: 100%;
+    min-height: 72px;
+    max-height: 200px;
+    resize: vertical;
+    box-sizing: border-box;
+    padding: 10px 12px;
     font-size: 14px;
     line-height: 1.5;
-    color: #333;
+    border: 1px solid #d5dcd6;
+    border-radius: 10px;
+    background: #fff;
+    color: #1a1a1a;
+    font-family: inherit;
   }
-  .edit-task-modal .edit-task-comment-delete-btn {
+  .edit-task-comment-input:focus {
+    outline: none;
+    border-color: #1b5214;
+    box-shadow: 0 0 0 2px rgba(27, 82, 20, 0.12);
+  }
+  .edit-task-comment-input:disabled {
+    background: #f4f5f4;
+    color: #888;
+  }
+  .edit-task-comment-send-btn {
+    align-self: flex-end;
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    background: #2d5a32;
+    color: #fff;
+    cursor: pointer;
+  }
+  .edit-task-comment-send-btn:hover:not(:disabled) {
+    background: #244825;
+  }
+  .edit-task-comment-send-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .edit-task-comments-scroll {
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 4px 2px 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-radius: 10px;
+    background: #f4f6f4;
+    border: 1px solid #e2e8e3;
+    box-sizing: border-box;
+  }
+  .edit-task-comments-empty {
+    margin: 0;
+    padding: 16px 14px;
+    font-size: 13px;
+    color: #6b7280;
+    text-align: center;
+  }
+  .edit-task-comment-card {
+    margin: 0 6px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fff;
+    border: 1px solid #e6ebe7;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    box-sizing: border-box;
+  }
+  .edit-task-comment-card:first-child {
+    margin-top: 6px;
+  }
+  .edit-task-comment-card:last-child {
+    margin-bottom: 6px;
+  }
+  .edit-task-comment-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-bottom: 8px;
+  }
+  .edit-task-comment-author {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1e3112;
+  }
+  .edit-task-comment-time {
+    font-size: 12px;
+    color: #6b7280;
+    font-variant-numeric: tabular-nums;
+  }
+  .edit-task-comment-delete-btn {
+    margin-left: auto;
     padding: 4px 10px;
     font-size: 12px;
     border: 1px solid #ddd;
@@ -1780,23 +2171,22 @@
     color: #666;
     cursor: pointer;
   }
-  .edit-task-modal .edit-task-comment-delete-btn:hover {
-    background: #f5f5f5;
+  .edit-task-comment-delete-btn:hover:not(:disabled) {
+    background: #fff5f5;
     color: #b3261e;
     border-color: #e0c4c4;
   }
-  .edit-task-modal .edit-task-comment-add-btn {
-    padding: 8px 14px;
-    font-size: 13px;
-    font-weight: 500;
-    border: 1px solid #d5dcd6;
-    border-radius: 8px;
-    background: #fff;
-    color: #2d3f2f;
-    cursor: pointer;
+  .edit-task-comment-delete-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
-  .edit-task-modal .edit-task-comment-add-btn:hover {
-    background: #f4f6f4;
+  .edit-task-comment-body {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #333;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
   .edit-task-modal .edit-task-reset-btn,
   .edit-task-modal .edit-task-save-btn,
@@ -1850,7 +2240,14 @@
   }
   .notification-detail-header {
     padding: 14px 16px;
-    align-items: flex-start;
+    align-items: center;
+    gap: 12px;
+  }
+  .notification-detail-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
   }
   .notification-detail-header-text {
     display: flex;
@@ -1999,6 +2396,22 @@
   .notification-detail-from-suffix {
     font-weight: 400;
   }
+  .notification-detail-from--invite-summary {
+    line-height: 1.65;
+    font-size: 14px;
+    color: #374151;
+    gap: 0 4px;
+  }
+  .notification-detail-from-meta {
+    color: #6b7280;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .notification-detail-invite-target {
+    font-weight: 700;
+    color: #111827;
+    margin: 0 2px;
+  }
   .notification-detail-from--system {
     font-weight: 600;
     color: #4b5563;
@@ -2051,6 +2464,12 @@
     background: #f9fafb;
     border-color: #9ca3af;
   }
+  .notification-detail-btn--compact {
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
   .notification-detail-btn--wide {
     min-width: 160px;
   }
@@ -2095,6 +2514,38 @@
     display: flex;
     align-items: center;
     gap: 10px;
+  }
+  .team-member-item--edit {
+    justify-content: space-between;
+    flex-wrap: wrap;
+    padding: 8px 0;
+    border-bottom: 1px solid #eef0f3;
+  }
+  .team-member-item--edit:last-child {
+    border-bottom: none;
+  }
+  .team-member-item-name {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+  }
+  .team-edit-member-list {
+    margin-top: 8px;
+  }
+  .member-remove-btn {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid #c62828;
+    border-radius: 6px;
+    background: #fff;
+    color: #c62828;
+    cursor: pointer;
+  }
+  .member-remove-btn:hover {
+    background: #ffebee;
   }
   .team-member-item-icon {
     width: 40px;
