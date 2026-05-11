@@ -5,7 +5,18 @@
         <p class="tasks-header-title">アクセスできません</p>
         <p class="tasks-header-sub">このチームのメンバーではないため、チーム情報を表示できません。</p>
       } @else if (team()) {
-        <p class="tasks-header-title">{{ team()!.name }}</p>
+        <p class="tasks-header-title tasks-header-title--inline">
+          {{ team()!.name }}
+          @if (myTeamRoleBadge(); as badge) {
+            <span
+              class="tasks-header-role-pill tasks-header-title-pill"
+              [class.tasks-header-role-pill--owner]="badge.role === 'owner'"
+              [class.tasks-header-role-pill--admin]="badge.role === 'admin'"
+              [class.tasks-header-role-pill--member]="badge.role === 'member'"
+              aria-label="このチームでのあなたの権限"
+              >{{ badge.roleJa }}</span>
+          }
+        </p>
       } @else if (team() === undefined) {
         <p class="tasks-header-title">読み込み中...</p>
       } @else {
@@ -55,11 +66,53 @@
         </p>
       </div>
 
+      <nav class="display-switch-container" aria-label="表示形式">
+        <button
+          class="display-switch-btn"
+          type="button"
+          [class.active]="displayFormat === 'list'"
+          (click)="displayFormat = 'list'"
+        >
+          リスト
+        </button>
+        <button
+          class="display-switch-btn"
+          type="button"
+          [class.active]="displayFormat === 'board'"
+          (click)="displayFormat = 'board'"
+        >
+          ボード
+        </button>
+        <button
+          class="display-switch-btn"
+          type="button"
+          [class.active]="displayFormat === 'calendar'"
+          (click)="displayFormat = 'calendar'"
+        >
+          カレンダー
+        </button>
+      </nav>
+
+      <div class="team-include-projects-row">
+        <label class="team-include-projects-label">
+          <input
+            type="checkbox"
+            [checked]="tasksService.teamListIncludeProjectTasks()"
+            (change)="onTeamIncludeProjectTasksChange($event)"
+          />
+          プロジェクトタスクを表示
+        </label>
+        <span class="team-include-projects-hint">
+          チェックすると、このチームに紐づく全プロジェクトのルート課題も一覧・ボード・カレンダーに含めます。
+        </span>
+      </div>
+
       <div class="tasks-tool-row" (click)="$event.stopPropagation()">
         <button class="add-task-btn" type="button" (click)="openTaskModal('task-add', null)">
           + タスクを追加
         </button>
         <div class="menu-wrapper" (click)="$event.stopPropagation()">
+          @if (displayFormat === 'list') {
           <button
             class="toolbar-btn"
             type="button"
@@ -69,17 +122,20 @@
           >
             ソート
           </button>
-          @if (tasksService.sortKey !== null) {
-            <button class="clear-btn" type="button" (click)="clearSort()">
-              {{ getSortLabel(tasksService.sortKey) }} ×
-            </button>
           }
-          @if (isSortMenuOpen) {
-            <div class="dropdown-menu" (click)="$event.stopPropagation()">
-              <button type="button" class="menu-item" (click)="selectSort('dueDate')">期日</button>
-              <button type="button" class="menu-item" (click)="selectSort('createdAt')">作成日</button>
-              <button type="button" class="menu-item" (click)="selectSort('updatedAt')">最終変更日</button>
-            </div>
+          @if (displayFormat === 'list') {
+            @if (tasksService.sortKey !== null) {
+              <button class="clear-btn" type="button" (click)="clearSort()">
+                {{ getSortLabel(tasksService.sortKey) }} ×
+              </button>
+            }
+            @if (isSortMenuOpen) {
+              <div class="dropdown-menu" (click)="$event.stopPropagation()">
+                <button type="button" class="menu-item" (click)="selectSort('dueDate')">期日</button>
+                <button type="button" class="menu-item" (click)="selectSort('createdAt')">作成日</button>
+                <button type="button" class="menu-item" (click)="selectSort('updatedAt')">最終変更日</button>
+              </div>
+            }
           }
         </div>
         <input
@@ -93,6 +149,7 @@
         />
       </div>
 
+      @if (displayFormat === 'list') {
       <div class="list">
         <div class="task-bulk-bar">
           <span class="task-bulk-count">{{ selectedTaskIds.length }}件選択中</span>
@@ -253,7 +310,12 @@
                         (change)="onRowCheckboxChange(task.id, $any($event.target).checked)"
                       />
                     </td>
-                    <td class="task-table-cell-title">{{ task.title }}</td>
+                    <td class="task-table-cell-title">
+                      <span
+                        class="team-task-title-wrap"
+                        [class.team-task-title--project]="!!task.projectId"
+                        >{{ task.title }}</span>
+                    </td>
                     <td class="task-table-cell-assign" [attr.title]="assigneeName(task)">
                       {{ assigneeName(task) }}
                     </td>
@@ -282,6 +344,266 @@
           </table>
         </div>
       </div>
+      } @else if (displayFormat === 'board') {
+      <div class="board">
+        <div class="board-columns" cdkDropListGroup>
+          <div
+            class="board-column"
+            id="未着手"
+            cdkDropList
+            cdkDropListSortingDisabled
+            [cdkDropListData]="filteredBoardTodos()"
+            (cdkDropListDropped)="dropTask($event)"
+          >
+            <p class="board-column-title">未着手</p>
+            @for (task of filteredBoardTodos(); track task.id) {
+              <div
+                class="board-card"
+                cdkDrag
+                [cdkDragDisabled]="!isTaskCreatorTask(task)"
+                (click)="openTaskModal('task-edit', task)"
+              >
+                <p class="board-card-title">
+                  <span [class.team-task-title--project]="!!task.projectId">{{ task.title }}</span>
+                </p>
+                <div class="board-card-meta">
+                  <span
+                    class="task-due-range board-card-due"
+                    [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                  >{{ boardDateRangeLabel(task) }}</span>
+                  @if (task.tags?.length) {
+                    <div class="board-card-tag-row" aria-label="タグ">
+                      @for (tag of task.tags ?? []; track tag.id) {
+                        <span class="task-pill board-card-tag-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+          <div
+            class="board-column"
+            id="進行中"
+            cdkDropList
+            cdkDropListSortingDisabled
+            [cdkDropListData]="filteredBoardInProgress()"
+            (cdkDropListDropped)="dropTask($event)"
+          >
+            <p class="board-column-title">進行中</p>
+            @for (task of filteredBoardInProgress(); track task.id) {
+              <div
+                class="board-card"
+                cdkDrag
+                [cdkDragDisabled]="!isTaskCreatorTask(task)"
+                (click)="openTaskModal('task-edit', task)"
+              >
+                <p class="board-card-title">
+                  <span [class.team-task-title--project]="!!task.projectId">{{ task.title }}</span>
+                </p>
+                <div class="board-card-meta">
+                  <span
+                    class="task-due-range board-card-due"
+                    [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                  >{{ boardDateRangeLabel(task) }}</span>
+                  @if (task.tags?.length) {
+                    <div class="board-card-tag-row" aria-label="タグ">
+                      @for (tag of task.tags ?? []; track tag.id) {
+                        <span class="task-pill board-card-tag-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+          <div
+            class="board-column"
+            id="保留"
+            cdkDropList
+            cdkDropListSortingDisabled
+            [cdkDropListData]="filteredBoardOnHold()"
+            (cdkDropListDropped)="dropTask($event)"
+          >
+            <p class="board-column-title">保留</p>
+            @for (task of filteredBoardOnHold(); track task.id) {
+              <div
+                class="board-card"
+                cdkDrag
+                [cdkDragDisabled]="!isTaskCreatorTask(task)"
+                (click)="openTaskModal('task-edit', task)"
+              >
+                <p class="board-card-title">
+                  <span [class.team-task-title--project]="!!task.projectId">{{ task.title }}</span>
+                </p>
+                <div class="board-card-meta">
+                  <span
+                    class="task-due-range board-card-due"
+                    [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                  >{{ boardDateRangeLabel(task) }}</span>
+                  @if (task.tags?.length) {
+                    <div class="board-card-tag-row" aria-label="タグ">
+                      @for (tag of task.tags ?? []; track tag.id) {
+                        <span class="task-pill board-card-tag-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+          <div
+            class="board-column"
+            id="完了"
+            cdkDropList
+            cdkDropListSortingDisabled
+            [cdkDropListData]="filteredBoardDone()"
+            (cdkDropListDropped)="dropTask($event)"
+          >
+            <p class="board-column-title">完了</p>
+            @for (task of filteredBoardDone(); track task.id) {
+              <div
+                class="board-card"
+                cdkDrag
+                [cdkDragDisabled]="!isTaskCreatorTask(task)"
+                (click)="openTaskModal('task-edit', task)"
+              >
+                <p class="board-card-title">
+                  <span [class.team-task-title--project]="!!task.projectId">{{ task.title }}</span>
+                </p>
+                <div class="board-card-meta">
+                  <span
+                    class="task-due-range board-card-due"
+                    [ngClass]="getDueDateStatus(task.dueDate, task.status)"
+                  >{{ boardDateRangeLabel(task) }}</span>
+                  @if (task.tags?.length) {
+                    <div class="board-card-tag-row" aria-label="タグ">
+                      @for (tag of task.tags ?? []; track tag.id) {
+                        <span class="task-pill board-card-tag-pill" [ngClass]="tagPillClass(tag.color)">{{ tag.name }}</span>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+      } @else if (displayFormat === 'calendar') {
+      <div class="calendar-nav">
+        <button type="button" class="calendar-btn" (click)="prevWeek()">前の週</button>
+        <button type="button" class="calendar-btn calendar-btn-today" (click)="today()">今日</button>
+        <button type="button" class="calendar-btn" (click)="nextWeek()">次の週</button>
+        <label class="calendar-show-done-label">
+          <input
+            type="checkbox"
+            [checked]="calendarShowCompletedTasks"
+            (change)="onCalendarShowCompletedChange($event)"
+          />
+          完了タスクも表示
+        </label>
+      </div>
+      <div
+        class="calendar-board"
+        [style.min-height.px]="getCalendarBoardMinHeight()"
+      >
+        <div
+          class="week-grid"
+          [style.min-height.px]="getCalendarBoardMinHeight()"
+        >
+          @for (date of weekDates; track date.getTime()) {
+            <div class="day-column">
+              <div class="day-header">
+                <div class="day-name">{{ getDayName(date) }}</div>
+                <div class="day-number" [ngClass]="{ 'today-number': isToday(date) }">
+                  {{ date.getDate() }}
+                </div>
+              </div>
+              <div class="day-body"></div>
+            </div>
+          }
+        </div>
+        <div class="task-layer">
+          @for (task of sortedWeekTasks(); track task.id) {
+            <button
+              type="button"
+              class="sample-task-bar"
+              [ngClass]="calendarBarModifierClass(task)"
+              (click)="openTaskModal('task-edit', task)"
+              [style.top.px]="getTaskTop(task)"
+              [style.left.%]="getTaskLeftPercent(task)"
+              [style.width.%]="getTaskWidthPercent(task)"
+              [attr.title]="task.title + '（' + task.status + '）'"
+            >
+              @if (task.tags?.length) {
+                <span class="cal-bar-tags" aria-hidden="true">
+                  @for (tag of task.tags!.slice(0, 6); track tag.id) {
+                    <span [class]="calendarTagDotClasses(tag)" [attr.title]="tag.name"></span>
+                  }
+                </span>
+              }
+              <span
+                class="cal-bar-title"
+                [class.team-task-title--project]="!!task.projectId"
+                >{{ task.title }}</span>
+            </button>
+          }
+        </div>
+      </div>
+      <div class="calendar-legend" aria-label="カレンダー表示の凡例">
+        <div class="calendar-legend-section">
+          <span class="calendar-legend-heading">タスクの状態（帯の色）</span>
+          <div class="calendar-legend-row">
+            <span class="calendar-legend-item">
+              <span class="calendar-legend-swatch cal-legend-bar cal-legend-bar--todo" aria-hidden="true"></span>
+              未着手
+            </span>
+            <span class="calendar-legend-item">
+              <span class="calendar-legend-swatch cal-legend-bar cal-legend-bar--inprogress" aria-hidden="true"></span>
+              進行中
+            </span>
+            <span class="calendar-legend-item">
+              <span class="calendar-legend-swatch cal-legend-bar cal-legend-bar--hold" aria-hidden="true"></span>
+              保留
+            </span>
+            <span class="calendar-legend-item">
+              <span class="calendar-legend-swatch cal-legend-bar cal-legend-bar--done" aria-hidden="true"></span>
+              完了
+            </span>
+            <span class="calendar-legend-item">
+              <span class="calendar-legend-swatch cal-legend-bar cal-legend-bar--overdue" aria-hidden="true"></span>
+              期限超過（未完了で期日を過ぎた場合）
+            </span>
+            <span class="calendar-legend-item">
+              <span class="calendar-legend-swatch cal-legend-bar cal-legend-bar--default" aria-hidden="true"></span>
+              その他の状態
+            </span>
+          </div>
+        </div>
+        <div class="calendar-legend-section">
+          <span class="calendar-legend-heading">タグ（帯の左の丸）</span>
+          <div class="calendar-legend-row">
+            <span class="calendar-legend-item">
+              <span class="cal-tag-dot cal-tag-dot--legend cal-tag-cat--work" aria-hidden="true"></span>
+              仕事
+            </span>
+            <span class="calendar-legend-item">
+              <span class="cal-tag-dot cal-tag-dot--legend cal-tag-cat--study" aria-hidden="true"></span>
+              学習
+            </span>
+            <span class="calendar-legend-item">
+              <span class="cal-tag-dot cal-tag-dot--legend cal-tag-cat--chore" aria-hidden="true"></span>
+              家事
+            </span>
+            <span class="calendar-legend-item">
+              <span class="cal-tag-dot cal-tag-dot--legend cal-tag-cat--personal" aria-hidden="true"></span>
+              趣味
+            </span>
+            <span class="calendar-legend-item">※作成したタグの色は重複する場合があります。</span>
+          </div>
+        </div>
+      </div>
+      }
     </section>
 
     <section class="team-projects-section" aria-labelledby="team-projects-heading">
@@ -347,11 +669,44 @@
     font-size: 20px;
     font-weight: 700;
   }
+  .tasks-header-title--inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    max-width: 100%;
+  }
+  .tasks-header-title-pill {
+    flex-shrink: 0;
+  }
   .tasks-header-sub {
     margin: 6px 0 0;
     font-size: 13px;
     color: #555;
     line-height: 1.45;
+  }
+  .tasks-header-role-pill {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    line-height: 1.3;
+  }
+  .tasks-header-role-pill--owner {
+    background: #fff8e6;
+    border-color: #e6c88a;
+    color: #6a4a00;
+  }
+  .tasks-header-role-pill--admin {
+    background: #e8f2ff;
+    border-color: #a8c4ef;
+    color: #1a4480;
+  }
+  .tasks-header-role-pill--member {
+    background: #f3f4f6;
+    border-color: #d5d8dd;
+    color: #3a3f45;
   }
   .team-forbidden-hint {
     margin: 16px 0;
@@ -856,6 +1211,31 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .team-task-title-wrap {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .team-task-title-wrap.team-task-title--project {
+    display: inline-block;
+    max-width: 100%;
+    padding: 1px 7px 2px;
+    border-radius: 6px;
+    border: 1px solid rgba(147, 197, 253, 0.95);
+    background: rgba(239, 246, 255, 0.92);
+    box-sizing: border-box;
+    vertical-align: bottom;
+  }
+  .board-card-title .team-task-title--project,
+  .cal-bar-title.team-task-title--project {
+    padding: 0 6px 1px;
+    border-radius: 5px;
+    border: 1px solid rgba(147, 197, 253, 0.95);
+    background: rgba(239, 246, 255, 0.92);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
   .task-bulk-bar {
     display: flex;
     align-items: center;
@@ -1031,5 +1411,517 @@
     background: #eceff1;
     color: #455a64;
     border-color: #cfd8dc;
+  }
+
+  .display-switch-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+    box-sizing: border-box;
+  }
+  .display-switch-btn {
+    padding: 8px 14px;
+    border: 1px solid #c8ccc9;
+    background: #f9fafb;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+  }
+  .display-switch-btn:hover {
+    background-color: #ebf1ee;
+  }
+  .display-switch-btn.active {
+    border-color: #1e3112;
+    background: #ebf1ee;
+    font-weight: 600;
+  }
+
+  .team-include-projects-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px 16px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+  .team-include-projects-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .team-include-projects-label input {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: #4ea356;
+  }
+  .team-include-projects-hint {
+    flex: 1;
+    min-width: 200px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #64748b;
+  }
+
+  .board {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 4px 16px;
+    background: #f0f3f1;
+    border-radius: 10px;
+    border: 1px solid #e8e8e8;
+  }
+  .board-columns {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+    width: max-content;
+    min-height: min(360px, 55vh);
+    padding: 4px 12px 8px;
+    box-sizing: border-box;
+  }
+  .board-column {
+    width: 272px;
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 10px 14px;
+    background: #e4e9e5;
+    border-radius: 12px;
+    border: 1px solid #d5dcd6;
+    box-sizing: border-box;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  .board-column-title {
+    margin: 0 0 4px;
+    padding: 6px 4px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #3d523f;
+    border-bottom: 1px solid #c9d1ca;
+    box-sizing: border-box;
+    background: transparent;
+    border-radius: 0;
+  }
+  .board-card {
+    cursor: pointer;
+    padding: 12px 12px;
+    background: #fff;
+    border: 1px solid #e0e4e8;
+    border-radius: 10px;
+    box-sizing: border-box;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  .board-card:hover {
+    border-color: #b8c9b9;
+    box-shadow: 0 4px 14px rgba(27, 82, 20, 0.12);
+    transform: translateY(-1px);
+  }
+  .board-card:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  .board-card.cdk-drag-preview {
+    opacity: 0.85;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  }
+  .board-card.cdk-drag-placeholder {
+    opacity: 0.25;
+  }
+  .board-card-title {
+    font-size: 14px;
+    line-height: 1.45;
+    margin: 0;
+    color: #1a1a1a;
+    line-clamp: 4;
+    overflow: hidden;
+  }
+  .board-card-meta {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #eef0f3;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .board-card-due {
+    align-self: flex-start;
+    font-size: 12px;
+    line-height: 1.35;
+    padding: 5px 10px;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .board-card-due.task-due-range:not(.near):not(.overdue) {
+    color: #4b5563;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+  }
+  .board-card-tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+  }
+  .board-card-tag-pill {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-width: 1px;
+    border-style: solid;
+  }
+
+  .calendar-nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .calendar-btn {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    background: #fff;
+    color: #333;
+  }
+  .calendar-btn:hover {
+    background: #f5f5f5;
+    border-color: #ccc;
+  }
+  .calendar-nav .calendar-btn-today {
+    background: #4ea356;
+    color: #fff;
+    border-color: #4ea356;
+  }
+  .calendar-nav .calendar-btn-today:hover {
+    background: #255c2b;
+    border-color: #255c2b;
+  }
+  .calendar-show-done-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 4px;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+    user-select: none;
+  }
+  .calendar-show-done-label input {
+    cursor: pointer;
+    width: 15px;
+    height: 15px;
+    accent-color: #4ea356;
+  }
+  .calendar-board {
+    position: relative;
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+  .week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    width: 100%;
+    background: #fff;
+    align-items: stretch;
+  }
+  .day-column {
+    min-width: 0;
+    min-height: 0;
+    border-right: 1px solid #eee;
+    display: flex;
+    flex-direction: column;
+  }
+  .day-column:last-child {
+    border-right: none;
+  }
+  .day-header {
+    min-height: 64px;
+    padding: 8px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-bottom: 1px solid #eee;
+    background: #fafafa;
+    box-sizing: border-box;
+  }
+  .day-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: #888;
+  }
+  .day-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: #222;
+  }
+  .today-number {
+    color: #fff;
+    background: #1b5214;
+  }
+  .day-body {
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    position: relative;
+    background: #fff;
+  }
+  .task-layer {
+    position: absolute;
+    top: 65px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    cursor: default;
+    min-height: 0;
+    padding: 6px 4px 10px;
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+  .sample-task-bar {
+    pointer-events: auto;
+    cursor: pointer;
+    position: absolute;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    box-sizing: border-box;
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    text-align: left;
+    max-width: 100%;
+  }
+  .cal-bar-title {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cal-bar-tags {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .cal-tag-dot {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+  }
+  .cal-tag-dot--legend {
+    width: 12px;
+    height: 12px;
+  }
+  .cal-tag-cat--work {
+    background: #1565c0;
+    border-color: #0d47a1;
+  }
+  .cal-tag-cat--study {
+    background: #6a1b9a;
+    border-color: #4a148c;
+  }
+  .cal-tag-cat--chore {
+    background: #e65100;
+    border-color: #bf360c;
+  }
+  .cal-tag-cat--personal {
+    background: #00897b;
+    border-color: #00695c;
+  }
+  .cal-tag-palette--red {
+    background: #ef5350;
+    border-color: #c62828;
+  }
+  .cal-tag-palette--orange {
+    background: #fb8c00;
+    border-color: #e65100;
+  }
+  .cal-tag-palette--yellow {
+    background: #fdd835;
+    border-color: #f9a825;
+  }
+  .cal-tag-palette--green {
+    background: #66bb6a;
+    border-color: #2e7d32;
+  }
+  .cal-tag-palette--teal {
+    background: #26a69a;
+    border-color: #00695c;
+  }
+  .cal-tag-palette--blue {
+    background: #42a5f5;
+    border-color: #1565c0;
+  }
+  .cal-tag-palette--indigo {
+    background: #5c6bc0;
+    border-color: #283593;
+  }
+  .cal-tag-palette--purple {
+    background: #ab47bc;
+    border-color: #6a1b9a;
+  }
+  .cal-tag-palette--pink {
+    background: #ec407a;
+    border-color: #ad1457;
+  }
+  .cal-tag-palette--gray {
+    background: #90a4ae;
+    border-color: #455a64;
+  }
+  .sample-task-bar.cal-bar--todo {
+    background: #e3f2fd;
+    color: #0d47a1;
+    border-color: #90caf9;
+  }
+  .sample-task-bar.cal-bar--inprogress {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border-color: #a5d6a7;
+  }
+  .sample-task-bar.cal-bar--hold {
+    background: #fff3e0;
+    color: #e65100;
+    border-color: #ffcc80;
+  }
+  .sample-task-bar.cal-bar--done {
+    background: #f3e5f5;
+    color: #4a148c;
+    border-color: #ce93d8;
+  }
+  .sample-task-bar.cal-bar--overdue {
+    background: #ffcdd2;
+    color: #b71c1c;
+    border-color: #ef9a9a;
+    font-weight: 600;
+  }
+  .sample-task-bar.cal-bar--default {
+    background: #eceff1;
+    color: #37474f;
+    border-color: #cfd8dc;
+  }
+  .sample-task-bar:hover {
+    filter: brightness(0.96);
+  }
+  .calendar-legend {
+    margin-top: 16px;
+    padding: 14px 16px 16px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #334155;
+    box-sizing: border-box;
+  }
+  .calendar-legend-section + .calendar-legend-section {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+  }
+  .calendar-legend-heading {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #475569;
+    font-size: 12px;
+  }
+  .calendar-legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    align-items: center;
+  }
+  .calendar-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+  }
+  .calendar-legend-swatch {
+    flex-shrink: 0;
+    box-sizing: border-box;
+  }
+  .cal-legend-bar {
+    width: 22px;
+    height: 12px;
+    border-radius: 4px;
+  }
+  .cal-legend-bar--todo {
+    background: #e3f2fd;
+    border: 1px solid #90caf9;
+  }
+  .cal-legend-bar--inprogress {
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+  }
+  .cal-legend-bar--hold {
+    background: #fff3e0;
+    border: 1px solid #ffcc80;
+  }
+  .cal-legend-bar--done {
+    background: #f3e5f5;
+    border: 1px solid #ce93d8;
+  }
+  .cal-legend-bar--overdue {
+    background: #ffcdd2;
+    border: 1px solid #ef9a9a;
+  }
+  .cal-legend-bar--default {
+    background: #eceff1;
+    border: 1px solid #cfd8dc;
   }
 </style>
