@@ -25,7 +25,7 @@ import {
   deleteProject,
   deleteProjectAllMembers,
   addProjectMember,
-  getTargetIdFromInviteId,
+  getInvite,
   getInviteTargetDisplayName,
   addTeamMember,
   getTags,
@@ -35,6 +35,10 @@ import {
   deleteTeamAllMembers as firestoreDeleteTeamAllMembers,
   removeUserFromTeamAndTeamProjects,
   unreadNotification,
+  getTeamById,
+  getTeamMembersByTeamId,
+  getProject,
+  getProjectMembers,
 } from '../firestore';
 import { AuthStateService } from '../services/auth-state.service';
 import { TasksService } from '../services/tasks.service';
@@ -57,7 +61,28 @@ import {
   canEditTeamBasics,
   canManageProjectMembers,
   canManageTeamMembers,
+  effectiveProjectRole,
+  effectiveTeamRole,
+  memberRoleLabelJa,
+  type MemberRole,
 } from '../utils/member-permissions';
+
+/** タスクモーダル用: 1行＝スコープラベル＋任意の名称（リンク可）＋役割ピル */
+type TaskContextRoleRow = {
+  scopeLabel: string;
+  /** プロジェクト名・チーム名など */
+  detail?: string;
+  /** 名称クリック時の遷移先 */
+  detailNavigate?: 'project' | 'team';
+  detailId?: string;
+  roleJa: string;
+  role: MemberRole;
+};
+
+/** タスクモーダル用: プロジェクト課題では「プロジェクト」＋「所属チーム」の両方を出せる */
+type TaskContextRoleUi = {
+  rows: TaskContextRoleRow[];
+};
 
 @Component({
   selector: 'app-home',
@@ -123,6 +148,12 @@ export class HomeComponent {
   // プロジェクト
   inviteInput: AddInviteInput = initialInviteInput;
   inviteEmail: string = '';
+  /** チーム招待時に付与するロール（承諾時に teamMembers に反映。owner は不可） */
+  teamInviteRole: 'admin' | 'member' = 'member';
+
+  /** タスク編集モーダル用: チーム／プロジェクトでの現在ユーザーの権限（個人タスクでは null） */
+  taskContextRoleUi: TaskContextRoleUi | null = null;
+  private taskContextRoleLoadSeq = 0;
   /** 招待メール入力欄直下に表示するフィードバック（alert は使わない） */
   inviteFeedbackMessage = '';
   inviteFeedbackSuccess = false;
@@ -201,6 +232,12 @@ export class HomeComponent {
         this.tagDefinitionsEditMode = false;
         const task = state.data as Task;
         this.tasksService.editingTask = { ...task, tagIds: task.tagIds ?? [] };
+        void this.loadTaskContextRoleForTask(task);
+      } else if (
+        !state.isOpen ||
+        (state.isOpen && state.type !== 'task-edit' && state.type !== 'team-task-detail')
+      ) {
+        this.taskContextRoleUi = null;
       }
       if (
         state.isOpen &&
@@ -222,8 +259,10 @@ export class HomeComponent {
     this.tagDefinitionsEditMode = false;
     if(type === 'task-edit' || type === 'team-task-detail') {
       this.tasksService.editingTask = { ...initialTask as Task };
+      this.taskContextRoleUi = null;
     } else if(type === 'project-invite' || type === 'project-edit' || type === 'team-edit') {
       this.inviteEmail = '';
+      this.teamInviteRole = 'member';
       this.clearInviteFeedback();
     }
     this.modalService.close();
@@ -712,6 +751,99 @@ export class HomeComponent {
     this.inviteFeedbackSuccess = false;
   }
 
+  /** タスクに紐づくチーム／プロジェクトでの現在ユーザーの役割（個人タスクでは表示なし） */
+  private async loadTaskContextRoleForTask(task: Task): Promise<void> {
+    const seq = ++this.taskContextRoleLoadSeq;
+    const uid = this.authState.uid;
+    if (!uid) {
+      this.taskContextRoleUi = null;
+      return;
+    }
+    try {
+      if (task.projectId) {
+        const project = await getProject(task.projectId);
+        if (seq !== this.taskContextRoleLoadSeq) return;
+        if (!project) {
+          this.taskContextRoleUi = null;
+          return;
+        }
+        const members = await getProjectMembers(task.projectId);
+        if (seq !== this.taskContextRoleLoadSeq) return;
+        const rows: TaskContextRoleRow[] = [];
+        const pr = effectiveProjectRole(project, members, uid);
+        const pJa = memberRoleLabelJa(pr);
+        if (pr && pJa) {
+          const name = project.name?.trim();
+          rows.push({
+            scopeLabel: 'プロジェクト',
+            detail: name || undefined,
+            detailNavigate: 'project',
+            detailId: project.id,
+            roleJa: pJa,
+            role: pr,
+          });
+        }
+        if (project.teamId) {
+          const team = await getTeamById(project.teamId);
+          if (seq !== this.taskContextRoleLoadSeq) return;
+          if (team) {
+            const teamMembers = await getTeamMembersByTeamId(project.teamId);
+            if (seq !== this.taskContextRoleLoadSeq) return;
+            const tr = effectiveTeamRole(team, teamMembers, uid);
+            const tJa = memberRoleLabelJa(tr);
+            if (tr && tJa) {
+              const teamName = team.name?.trim();
+              rows.push({
+                scopeLabel: '所属チーム',
+                detail: teamName || undefined,
+                detailNavigate: 'team',
+                detailId: team.id,
+                roleJa: tJa,
+                role: tr,
+              });
+            }
+          }
+        }
+        this.taskContextRoleUi = rows.length > 0 ? { rows } : null;
+        return;
+      }
+      if (task.teamId) {
+        const team = await getTeamById(task.teamId);
+        if (seq !== this.taskContextRoleLoadSeq) return;
+        if (!team) {
+          this.taskContextRoleUi = null;
+          return;
+        }
+        const members = await getTeamMembersByTeamId(task.teamId);
+        if (seq !== this.taskContextRoleLoadSeq) return;
+        const r = effectiveTeamRole(team, members, uid);
+        const roleJa = memberRoleLabelJa(r);
+        const teamName = team.name?.trim();
+        this.taskContextRoleUi =
+          r && roleJa
+            ? {
+                rows: [
+                  {
+                    scopeLabel: 'チーム',
+                    detail: teamName || undefined,
+                    detailNavigate: 'team',
+                    detailId: team.id,
+                    roleJa,
+                    role: r,
+                  },
+                ],
+              }
+            : null;
+        return;
+      }
+      if (seq !== this.taskContextRoleLoadSeq) return;
+      this.taskContextRoleUi = null;
+    } catch {
+      if (seq !== this.taskContextRoleLoadSeq) return;
+      this.taskContextRoleUi = null;
+    }
+  }
+
   /** 招待フィードバーを入力の変更で消す（成功直後にメール欄を空にしただけでは消さない） */
   onInviteEmailInput(value: string): void {
     if (!this.inviteFeedbackMessage) return;
@@ -741,6 +873,7 @@ export class HomeComponent {
         email,
         this.authState.user()?.email ?? '',
         this.authState.uid,
+        type === 'team' ? this.teamInviteRole : undefined,
       );
       if (result === 'user_not_found') {
         this.showInviteFeedback('ユーザーが存在しません。', false);
@@ -939,8 +1072,8 @@ export class HomeComponent {
 
       const uid = this.authState.uid;
       if (!uid) return;
-      const targetId = await getTargetIdFromInviteId(invitedId);
-      if (!targetId) return;
+      const inviteDoc = await getInvite(invitedId);
+      if (!inviteDoc?.targetId) return;
 
       // 招待を承諾する
       await acceptInvite(invitedId, this.authState.uid);
@@ -948,16 +1081,18 @@ export class HomeComponent {
       // membersに追加する
       if(type === 'project') {
         const addProjectMemberInput: AddProjectMemberInput = {
-          projectId: targetId,
+          projectId: inviteDoc.targetId,
           userId: this.authState.uid,
           role: 'member',
         }
         await addProjectMember(addProjectMemberInput);
       } else if(type === 'team') {
+        const role: 'admin' | 'member' =
+          inviteDoc.teamMemberRole === 'admin' ? 'admin' : 'member';
         const addTeamMemberInput: AddTeamMemberInput = {
-          teamId: targetId,
+          teamId: inviteDoc.targetId,
           userId: this.authState.uid,
-          role: 'member',
+          role,
         }
         await addTeamMember(addTeamMemberInput);
       }

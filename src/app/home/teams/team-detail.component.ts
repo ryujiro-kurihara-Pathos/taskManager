@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import {
     Component,
     HostListener,
@@ -13,7 +14,7 @@ import { Subscription } from 'rxjs';
 import { ModalService } from '../../services/modal.service';
 import { TasksService } from '../../services/tasks.service';
 import { AuthStateService } from '../../services/auth-state.service';
-import { SortKey, Tag, Task } from '../../types/task';
+import { AddTaskInput, SortKey, Tag, Task } from '../../types/task';
 import { Team, TeamMember } from '../../types/team';
 import { isTaskCreator } from '../../utils/task-permissions';
 import { userAvatarInitial } from '../../utils/user-avatar';
@@ -21,6 +22,9 @@ import {
     canEditTeamBasics,
     canManageTeamMembers,
     canViewTeam,
+    effectiveTeamRole,
+    memberRoleLabelJa,
+    type MemberRole,
 } from '../../utils/member-permissions';
 import {
     deleteChildrenTask,
@@ -61,7 +65,7 @@ function isTaskOverdue(task: Task): boolean {
     selector: 'app-team-detail',
     templateUrl: './team-detail.component.html',
     standalone: true,
-    imports: [CommonModule, RouterLink],
+    imports: [CommonModule, RouterLink, DragDropModule],
 })
 export class TeamDetailComponent implements OnInit, OnDestroy {
     private route = inject(ActivatedRoute);
@@ -70,6 +74,55 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
 
     tasksService = inject(TasksService);
     authState = inject(AuthStateService);
+
+    displayFormat: 'list' | 'board' | 'calendar' = 'list';
+
+    weekDates: Date[] = [];
+    currentDate = new Date();
+    readonly calendarRowHeightPx = 48;
+    readonly calendarHeaderBandPx = 65;
+    calendarShowCompletedTasks = false;
+
+    private teamBoardScopedTasks(): Task[] {
+        const ctx = this.tasksService.taskListContext();
+        if (ctx.mode !== 'team') return [];
+        const teamId = ctx.teamId;
+        const include = this.tasksService.teamListIncludeProjectTasks();
+        const projectIds = new Set(this.tasksService.teamMergedProjectIds());
+        return this.tasksService.tasks().filter((task) => {
+            if (task.parentTaskId != null) return false;
+            if (task.teamId === teamId && task.projectId == null) return true;
+            if (
+                include &&
+                task.projectId != null &&
+                projectIds.has(task.projectId)
+            ) {
+                return true;
+            }
+            return false;
+        });
+    }
+
+    readonly filteredBoardTodos = computed(() =>
+        this.tasksService.applySearchOnly(
+            this.teamBoardScopedTasks().filter((t) => t.status === '未着手'),
+        ),
+    );
+    readonly filteredBoardInProgress = computed(() =>
+        this.tasksService.applySearchOnly(
+            this.teamBoardScopedTasks().filter((t) => t.status === '進行中'),
+        ),
+    );
+    readonly filteredBoardOnHold = computed(() =>
+        this.tasksService.applySearchOnly(
+            this.teamBoardScopedTasks().filter((t) => t.status === '保留'),
+        ),
+    );
+    readonly filteredBoardDone = computed(() =>
+        this.tasksService.applySearchOnly(
+            this.teamBoardScopedTasks().filter((t) => t.status === '完了'),
+        ),
+    );
 
     teamId = signal<string>('');
     team = signal<Team | null | undefined>(undefined);
@@ -110,8 +163,21 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         );
     });
 
+    /** ヘッダーに表示する、このチームでの現在ユーザーの権限 */
+    myTeamRoleBadge = computed((): { roleJa: string; role: MemberRole } | null => {
+        const t = this.team();
+        if (!t) return null;
+        const uid = this.authState.uid;
+        if (!uid) return null;
+        const r = effectiveTeamRole(t, this.teamMembers(), uid);
+        const roleJa = memberRoleLabelJa(r);
+        if (!r || !roleJa) return null;
+        return { roleJa, role: r };
+    });
+
+    /** 一覧のフィルター・ソートと同じ集合を前提にした件数（チーム直下＋任意でプロジェクト） */
     teamTaskOverview = computed(() => {
-        const tasks = this.tasksService.tasks();
+        const tasks = this.tasksService.getDisplayTasks(null);
         let active = 0;
         let done = 0;
         let overdue = 0;
@@ -132,6 +198,7 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
     });
 
     async ngOnInit() {
+        this.weekDates = this.getWeekDates(this.currentDate);
         const teamId = this.route.snapshot.paramMap.get('teamId');
         if (!teamId) return;
         this.teamId.set(teamId);
@@ -236,17 +303,40 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
     private async reloadTeamTasksAndProjects(): Promise<void> {
         const id = this.teamId();
         if (!id) return;
-        const tasks = await getTasksByTeamId(id);
-        await this.tasksService.loadTaskTags(tasks);
-        this.tasksService.setTasks(tasks);
+        const teamRoots = await getTasksByTeamId(id);
+        let merged: Task[] = [...teamRoots];
+        if (this.tasksService.teamListIncludeProjectTasks()) {
+            const projectIds = this.tasksService.teamMergedProjectIds();
+            if (projectIds.length > 0) {
+                const chunks = await Promise.all(
+                    projectIds.map((pid) => getTasksByProjectId(pid)),
+                );
+                for (const chunk of chunks) {
+                    merged.push(
+                        ...chunk.filter((t) => t.parentTaskId == null),
+                    );
+                }
+            }
+        }
+        const byId = new Map(merged.map((t) => [t.id, t]));
+        merged = [...byId.values()];
+        await this.tasksService.loadTaskTags(merged);
+        this.tasksService.setTasks(merged);
         this.tasksService.allTaskTags = (await getTags(this.authState.uid)) as Tag[];
         await this.loadTeamProjectCards(id);
+    }
+
+    async onTeamIncludeProjectTasksChange(ev: Event): Promise<void> {
+        const el = ev.target as HTMLInputElement | null;
+        this.tasksService.setTeamListIncludeProjectTasks(!!el?.checked);
+        await this.reloadTeamTasksAndProjects();
     }
 
     private async loadTeamProjectCards(teamId: string): Promise<void> {
         try {
             const uid = this.authState.uid;
             const projects = await getProjectsByTeamId(teamId);
+            this.tasksService.setTeamMergedProjectIds(projects.map((p) => p.id));
             const cards = await Promise.all(
                 projects.map(async (project) => {
                     const members = await getProjectMembers(project.id);
@@ -277,6 +367,7 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
         } catch (e) {
             console.error('チームプロジェクト概要の取得に失敗しました', e);
             this.teamProjectCards.set([]);
+            this.tasksService.setTeamMergedProjectIds([]);
         }
     }
 
@@ -462,5 +553,226 @@ export class TeamDetailComponent implements OnInit, OnDestroy {
 
     tagPillClass(color: string): string {
         return `task-pill task-pill--tag-${color}`;
+    }
+
+    boardDateRangeLabel(task: Task): string {
+        const a = (task.startDate ?? '').toString().trim();
+        const b = (task.dueDate ?? '').toString().trim();
+        if (!a && !b) {
+            return '期間未設定';
+        }
+        if (a && b) {
+            return `${a} 〜 ${b}`;
+        }
+        if (b) {
+            return `期限 ${b}`;
+        }
+        return `開始 ${a}`;
+    }
+
+    calendarBarModifierClass(task: Task): string {
+        if (task.status === '完了') {
+            return 'cal-bar--done';
+        }
+        if (this.getDueDateStatus(task.dueDate, task.status) === 'overdue') {
+            return 'cal-bar--overdue';
+        }
+        switch (task.status) {
+            case '未着手':
+                return 'cal-bar--todo';
+            case '進行中':
+                return 'cal-bar--inprogress';
+            case '保留':
+                return 'cal-bar--hold';
+            default:
+                return 'cal-bar--default';
+        }
+    }
+
+    calendarTagCategoryClass(tag: Tag): string {
+        const raw = (tag.name ?? '').trim();
+        if (/仕事|業務|会議|仕様|プロジェクト|タスク/i.test(raw)) {
+            return 'cal-tag-cat--work';
+        }
+        if (/学習|勉強|学校|講義|受験|資格|課題/i.test(raw)) {
+            return 'cal-tag-cat--study';
+        }
+        if (/家事|掃除|買い物|育児/i.test(raw)) {
+            return 'cal-tag-cat--chore';
+        }
+        if (/個人|プライベート|趣味|プライベ/i.test(raw)) {
+            return 'cal-tag-cat--personal';
+        }
+        const c = String(tag.color ?? 'gray').replace(/[^a-z0-9-]/gi, '') || 'gray';
+        return `cal-tag-palette--${c}`;
+    }
+
+    calendarTagDotClasses(tag: Tag): string {
+        return `cal-tag-dot ${this.calendarTagCategoryClass(tag)}`;
+    }
+
+    onCalendarShowCompletedChange(ev: Event): void {
+        const el = ev.target as HTMLInputElement | null;
+        this.calendarShowCompletedTasks = !!el?.checked;
+    }
+
+    async dropTask(event: CdkDragDrop<Task[]>) {
+        if (event.previousContainer === event.container) {
+            return;
+        }
+        const movedTask = event.previousContainer.data[event.previousIndex];
+        if (!this.isTaskCreatorTask(movedTask)) {
+            return;
+        }
+        const newStatus = event.container.id as Task['status'];
+
+        this.tasksService.tasks.update((tasks) =>
+            tasks.map((task) =>
+                task.id === movedTask.id ? { ...task, status: newStatus } : task,
+            ),
+        );
+
+        try {
+            const inputTask: AddTaskInput = {
+                ...movedTask,
+                status: newStatus,
+            };
+            await updateTask(movedTask.id, inputTask);
+        } catch (error) {
+            console.error('タスクステータス更新失敗: ', error);
+        }
+    }
+
+    getWeekDates(baseDate: Date): Date[] {
+        const date = new Date(baseDate);
+        const day = date.getDay();
+        date.setDate(date.getDate() - day);
+        const dates: Date[] = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(date);
+            d.setDate(date.getDate() + i);
+            dates.push(d);
+        }
+        return dates;
+    }
+
+    getDayName(date: Date): string {
+        const days = ['月', '火', '水', '木', '金', '土', '日'];
+        return days[date.getDay()];
+    }
+
+    prevWeek() {
+        const newDate = new Date(this.currentDate);
+        newDate.setDate(newDate.getDate() - 7);
+        this.currentDate = newDate;
+        this.weekDates = this.getWeekDates(this.currentDate);
+    }
+
+    nextWeek() {
+        const newDate = new Date(this.currentDate);
+        newDate.setDate(newDate.getDate() + 7);
+        this.currentDate = newDate;
+        this.weekDates = this.getWeekDates(this.currentDate);
+    }
+
+    today() {
+        const newDate = new Date();
+        this.currentDate = newDate;
+        this.weekDates = this.getWeekDates(this.currentDate);
+    }
+
+    isToday(date: Date): boolean {
+        const today = new Date();
+        return (
+            date.getFullYear() === today.getFullYear() &&
+            date.getMonth() === today.getMonth() &&
+            date.getDate() === today.getDate()
+        );
+    }
+
+    formatDate(date: Date): string {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    getWeekTasks(): Task[] {
+        if (this.weekDates.length === 0) return [];
+        const weekStart = this.formatDate(this.weekDates[0]);
+        const weekEnd = this.formatDate(this.weekDates[6]);
+        return this.tasksService.tasks().filter((task) => {
+            if (!task.startDate || !task.dueDate) return false;
+            return task.startDate <= weekEnd && task.dueDate >= weekStart;
+        });
+    }
+
+    getCalendarWeekTasks(): Task[] {
+        const ids = this.tasksService.getDisplayTasks('notDone').map((t) => t.id);
+        if (this.calendarShowCompletedTasks) {
+            ids.push(...this.tasksService.getDisplayTasks('done').map((t) => t.id));
+        }
+        const displayedIds = new Set(ids);
+        return this.getWeekTasks().filter((t) => displayedIds.has(t.id));
+    }
+
+    getTaskStartIndex(task: Task): number {
+        if (!task.startDate) return 0;
+        const weekStart = this.formatDate(this.weekDates[0]);
+        if (task.startDate <= weekStart) {
+            return 0;
+        }
+        return this.weekDates.findIndex((d) => this.formatDate(d) === task.startDate);
+    }
+
+    getTaskLeftPercent(task: Task): number {
+        const startIndex = this.getTaskStartIndex(task);
+        return (startIndex / 7) * 100;
+    }
+
+    getTaskEndIndex(task: Task): number {
+        if (!task.dueDate) return 0;
+        const weekEnd = this.formatDate(this.weekDates[6]);
+        if (task.dueDate >= weekEnd) {
+            return 6;
+        }
+        return this.weekDates.findIndex((d) => this.formatDate(d) === task.dueDate);
+    }
+
+    getTaskWidthPercent(task: Task): number {
+        const startIndex = this.getTaskStartIndex(task);
+        const endIndex = this.getTaskEndIndex(task);
+        const spanDays = endIndex - startIndex + 1;
+        return (spanDays / 7) * 100;
+    }
+
+    sortedWeekTasks(): Task[] {
+        return [...this.getCalendarWeekTasks()].sort((a, b) => {
+            if (a.startDate && b.startDate && a.startDate !== b.startDate) {
+                return a.startDate.localeCompare(b.startDate);
+            }
+            if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) {
+                return a.dueDate.localeCompare(b.dueDate);
+            }
+            return a.id.localeCompare(b.id);
+        });
+    }
+
+    getTaskRow(task: { id: string }): number {
+        return this.sortedWeekTasks().findIndex((t) => t.id === task.id);
+    }
+
+    getTaskTop(task: { id: string }): number {
+        return this.getTaskRow(task) * this.calendarRowHeightPx;
+    }
+
+    getCalendarBoardMinHeight(): number {
+        const rows = this.sortedWeekTasks().length;
+        const taskBand = rows * this.calendarRowHeightPx + 24;
+        const bodyFloor = 220;
+        return Math.max(
+            320,
+            this.calendarHeaderBandPx + Math.max(bodyFloor, taskBand),
+        );
     }
 }

@@ -46,12 +46,15 @@ export class TasksService {
     setTaskListContextTeam(teamId: string) {
         this.taskListContext.set({ mode: 'team', teamId });
         this.myTasksProfileListMode.set(null);
+        this.teamListIncludeProjectTasks.set(false);
     }
 
     /** マイタスク等に戻るとき */
     setTaskListContextMain() {
         this.taskListContext.set({ mode: 'main' });
         this.myTasksProfileListMode.set(null);
+        this.teamListIncludeProjectTasks.set(false);
+        this.teamMergedProjectIds.set([]);
     }
 
     /** クエリパラメータ view からマイタスクの表示モードを設定 */
@@ -86,6 +89,23 @@ export class TasksService {
      */
     myTasksProfileListMode = signal<MyTasksProfileListMode>(null);
 
+    /**
+     * チーム詳細: 当該チームに紐づくプロジェクト ID（「プロジェクトタスクも表示」用）。
+     * チーム画面の load でセットし、scopedTasksSource の判定に使う。
+     */
+    teamMergedProjectIds = signal<string[]>([]);
+
+    /** チーム詳細: チーム直下タスクに加え、上記プロジェクトのルートタスクも一覧対象に含める */
+    teamListIncludeProjectTasks = signal(false);
+
+    setTeamMergedProjectIds(projectIds: string[]) {
+        this.teamMergedProjectIds.set([...new Set(projectIds)]);
+    }
+
+    setTeamListIncludeProjectTasks(value: boolean) {
+        this.teamListIncludeProjectTasks.set(value);
+    }
+
     /** 一覧・検索対象となるタスク（コンテキストに応じて絞り込み） */
     private scopedTasksSource = computed(() => {
         const ctx = this.taskListContext();
@@ -95,12 +115,21 @@ export class TasksService {
                 (task) => task.projectId === null && task.teamId === null,
             );
         }
-        return all.filter(
-            (task) =>
-                task.teamId === ctx.teamId &&
-                task.projectId === null &&
-                task.parentTaskId === null,
-        );
+        const teamId = ctx.teamId;
+        const includeProjects = this.teamListIncludeProjectTasks();
+        const projectIdSet = new Set(this.teamMergedProjectIds());
+        return all.filter((task) => {
+            if (task.parentTaskId != null) return false;
+            if (task.teamId === teamId && task.projectId == null) return true;
+            if (
+                includeProjects &&
+                task.projectId != null &&
+                projectIdSet.has(task.projectId)
+            ) {
+                return true;
+            }
+            return false;
+        });
     });
     // 表示形式
     displayFormat: 'list' | 'board' | 'calendar' = 'list';
@@ -502,10 +531,9 @@ export class TasksService {
       // 期日が近いタスクの通知
     async createTaskDeadlineNotification(tasks: Task[]) {
         try {
-        // が近いタスクの取得
-        for(const task of tasks) {
-            // 完了タスクは通知しない
-            if(task.status === '完了') continue;
+        for (const task of tasks) {
+            // 完了タスクは期限間近通知の対象外（未完了のみ）
+            if (task.status === '完了') continue;
             // 期日未設定タスクは通知しない
             if(!task.dueDate) continue;
             // 期日が明日でないなら通知しない

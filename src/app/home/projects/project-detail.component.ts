@@ -17,9 +17,12 @@ import {
     subscribeTasksByProjectId,
     addTask,
     deleteProjectMember,
+    getTeamById,
+    getTeamMembersByTeamId,
 } from '../../firestore';
 import { Project } from '../../types/project';
-import { AddTaskInput, SortKey, Task } from '../../types/task';
+import { Team } from '../../types/team';
+import { AddTaskInput, SortKey, Tag, Task } from '../../types/task';
 import { isTaskCreator } from '../../utils/task-permissions';
 import { userAvatarInitial } from '../../utils/user-avatar';
 import {
@@ -27,7 +30,23 @@ import {
     canEditProjectBasics,
     canManageProjectMembers,
     canViewProject,
+    effectiveProjectRole,
+    effectiveTeamRole,
+    memberRoleLabelJa,
+    type MemberRole,
 } from '../../utils/member-permissions';
+
+/** プロジェクト詳細ヘッダー: 自分のプロジェクト権限と所属チーム権限 */
+type ProjectContextBanner = {
+    projectRoleJa: string;
+    projectRole: MemberRole;
+    team?: {
+        teamId: string;
+        teamName: string;
+        teamRoleJa: string;
+        teamRole: MemberRole;
+    };
+};
 import { FormsModule } from '@angular/forms';
 import { AuthStateService } from '../../services/auth-state.service';
 import { ModalService } from '../../services/modal.service';
@@ -56,6 +75,9 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
     tasks = signal<Task[]>([]);
     /** projectMembers に自分が含まれない */
     projectLoadForbidden = signal(false);
+
+    /** ヘッダー: プロジェクト／所属チームでの自分の役割 */
+    projectContextBanner = signal<ProjectContextBanner | null>(null);
 
     readonly filteredBoardTodos = computed(() =>
         this.tasksService.applySearchOnly(
@@ -92,6 +114,8 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
     readonly calendarRowHeightPx = 48;
     readonly calendarHeaderBandPx = 65;
 
+    calendarShowCompletedTasks = false;
+
     private tasksUnsub: (() => void) | null = null;
     /** 遅い loadTaskTags が後から終わって古い一覧で上書きしないため */
     private projectTasksSnapshotSeq = 0;
@@ -110,6 +134,8 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
             this.project = null;
             return;
         }
+
+        await this.refreshProjectContextBanner();
 
         this.tasksUnsub?.();
         const pid = this.projectId;
@@ -218,6 +244,47 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
             console.error('プロジェクトを取得できませんでした', error);
             return null;
         }
+    }
+
+    private async refreshProjectContextBanner(): Promise<void> {
+        const p = this.project;
+        if (!p) {
+            this.projectContextBanner.set(null);
+            return;
+        }
+        const uid = this.authStateService.uid;
+        const pr = effectiveProjectRole(p, p.projectMembers ?? [], uid);
+        const pJa = memberRoleLabelJa(pr);
+        if (!pr || !pJa) {
+            this.projectContextBanner.set(null);
+            return;
+        }
+        let teamPart: ProjectContextBanner['team'] | undefined;
+        if (p.teamId) {
+            try {
+                const team: Team | null = await getTeamById(p.teamId);
+                if (team) {
+                    const tm = await getTeamMembersByTeamId(p.teamId);
+                    const tr = effectiveTeamRole(team, tm, uid);
+                    const tJa = memberRoleLabelJa(tr);
+                    if (tr && tJa) {
+                        teamPart = {
+                            teamId: team.id,
+                            teamName: team.name?.trim() || 'チーム',
+                            teamRoleJa: tJa,
+                            teamRole: tr,
+                        };
+                    }
+                }
+            } catch {
+                /* チーム取得失敗時はプロジェクト行のみ */
+            }
+        }
+        this.projectContextBanner.set({
+            projectRoleJa: pJa,
+            projectRole: pr,
+            team: teamPart,
+        });
     }
 
     async addTask(title: string) {
@@ -433,6 +500,72 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
         return `task-pill task-pill--tag-${color}`;
     }
 
+    /** ボードカード用の期間ラベル（未設定はプレースホルダ） */
+    boardDateRangeLabel(task: Task): string {
+        const a = (task.startDate ?? '').toString().trim();
+        const b = (task.dueDate ?? '').toString().trim();
+        if (!a && !b) {
+            return '期間未設定';
+        }
+        if (a && b) {
+            return `${a} 〜 ${b}`;
+        }
+        if (b) {
+            return `期限 ${b}`;
+        }
+        return `開始 ${a}`;
+    }
+
+    /**
+     * カレンダー帯の本体色（ステータス＋未完了の期限超過）。
+     */
+    calendarBarModifierClass(task: Task): string {
+        if (task.status === '完了') {
+            return 'cal-bar--done';
+        }
+        if (this.getDueDateStatus(task.dueDate, task.status) === 'overdue') {
+            return 'cal-bar--overdue';
+        }
+        switch (task.status) {
+            case '未着手':
+                return 'cal-bar--todo';
+            case '進行中':
+                return 'cal-bar--inprogress';
+            case '保留':
+                return 'cal-bar--hold';
+            default:
+                return 'cal-bar--default';
+        }
+    }
+
+    /** タグ名のキーワード → 分類色。なければ既存の tag.color パレット */
+    calendarTagCategoryClass(tag: Tag): string {
+        const raw = (tag.name ?? '').trim();
+        if (/仕事|業務|会議|仕様|プロジェクト|タスク/i.test(raw)) {
+            return 'cal-tag-cat--work';
+        }
+        if (/学習|勉強|学校|講義|受験|資格|課題/i.test(raw)) {
+            return 'cal-tag-cat--study';
+        }
+        if (/家事|掃除|買い物|育児/i.test(raw)) {
+            return 'cal-tag-cat--chore';
+        }
+        if (/個人|プライベート|趣味|プライベ/i.test(raw)) {
+            return 'cal-tag-cat--personal';
+        }
+        const c = String(tag.color ?? 'gray').replace(/[^a-z0-9-]/gi, '') || 'gray';
+        return `cal-tag-palette--${c}`;
+    }
+
+    calendarTagDotClasses(tag: Tag): string {
+        return `cal-tag-dot ${this.calendarTagCategoryClass(tag)}`;
+    }
+
+    onCalendarShowCompletedChange(ev: Event): void {
+        const el = ev.target as HTMLInputElement | null;
+        this.calendarShowCompletedTasks = !!el?.checked;
+    }
+
     getWeekDates(baseDate: Date): Date[] {
         const date = new Date(baseDate);
         const day = date.getDay();
@@ -502,9 +635,11 @@ export class ProjectDetailComponent implements OnInit, OnDestroy {
     }
 
     getCalendarWeekTasks(): Task[] {
-        const displayedIds = new Set(
-            this.displayTasks('notDone').map((t) => t.id),
-        );
+        const ids = this.displayTasks('notDone').map((t) => t.id);
+        if (this.calendarShowCompletedTasks) {
+            ids.push(...this.displayTasks('done').map((t) => t.id));
+        }
+        const displayedIds = new Set(ids);
         return this.getWeekTasks().filter((t) => displayedIds.has(t.id));
     }
 

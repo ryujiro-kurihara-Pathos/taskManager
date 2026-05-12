@@ -11,6 +11,9 @@ export type Invite = {
 
     isRead: boolean;
     isImportant: boolean;
+
+    /** type が team のとき、承諾後に teamMembers に付与するロール（admin / member のみ。owner は不可） */
+    teamMemberRole?: 'admin' | 'member';
 }
 
 export type AddInviteInput = Omit<Invite, 'id' | 'createdAt'>;

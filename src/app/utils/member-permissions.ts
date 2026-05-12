@@ -3,6 +3,14 @@ import type { Team, TeamMember } from '../types/team';
 
 export type MemberRole = 'owner' | 'admin' | 'member';
 
+/** UI 表示用（チーム・プロジェクトの役割ラベル） */
+export function memberRoleLabelJa(role: MemberRole | null | undefined): string | null {
+  if (!role) return null;
+  if (role === 'owner') return 'オーナー';
+  if (role === 'admin') return '管理者';
+  return 'メンバー';
+}
+
 export function projectMemberRecord(
   members: ProjectMember[] | null | undefined,
   uid: string,

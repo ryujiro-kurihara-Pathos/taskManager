@@ -308,6 +308,10 @@ export async function updateTask(taskId: string, inputTask: AddTaskInput) {
             updatedAt: updatedAt,
         });
 
+        if (inputTask.status === '完了') {
+            await deleteTaskDeadlineNotificationsForTask(taskId);
+        }
+
         const tags = await getTagsByIds(inputTask.tagIds);
 
         const task = {
@@ -324,6 +328,7 @@ export async function updateTask(taskId: string, inputTask: AddTaskInput) {
 // タスクを削除
 export async function deleteTask(taskId: string) {
     try {
+        await deleteTaskDeadlineNotificationsForTask(taskId);
         const docRef = doc(db, 'tasks', taskId);
         await deleteDoc(docRef);
     } catch (error) {
@@ -565,6 +570,17 @@ export async function getTargetIdFromInviteId(inviteId: string) {
     }
 }
 
+/** invites ドキュメントを取得（チーム招待の teamMemberRole など） */
+export async function getInvite(inviteId: string): Promise<Invite | null> {
+    try {
+        const inviteSnap = await getDoc(doc(db, 'invites', inviteId));
+        if (!inviteSnap.exists()) return null;
+        return { id: inviteSnap.id, ...(inviteSnap.data() as Omit<Invite, 'id'>) };
+    } catch (error) {
+        throw error;
+    }
+}
+
 /** 招待ドキュメントから、プロジェクト名またはチーム名を取得（通知詳細の表示用） */
 export async function getInviteTargetDisplayName(inviteId: string): Promise<string | null> {
     try {
@@ -769,6 +785,8 @@ export async function invite(
     inviteEmail: string,
     myEmail: string,
     invitedByUid: string, // 招待したユーザー
+    /** type が team のときのみ有効。承諾時に teamMembers.role に使う（admin | member） */
+    teamMemberRole?: 'admin' | 'member',
 ): Promise<SendInviteResult> {
     try {
         // メールアドレスが一致するユーザーが存在しない場合は招待しない
@@ -835,6 +853,9 @@ export async function invite(
             return 'already_pending';
         }
 
+        const resolvedTeamRole: 'admin' | 'member' =
+            type === 'team' ? (teamMemberRole === 'admin' ? 'admin' : 'member') : 'member';
+
         // 辞退済みなど pending 以外の同一招待レコードがあれば更新、なければ新規作成（プロジェクト／チーム共通）
         const sameKindInvites = existingInvitesSnap.docs.filter(
             (d) => d.data()['type'] === type,
@@ -846,12 +867,14 @@ export async function invite(
         if (resendInviteDoc) {
             inviteId = resendInviteDoc.id;
             if (!inviteId) return 'failed';
-            await updateDoc(doc(db, 'invites', inviteId), {
-                status: 'pending',
-            });
+            const patch: Record<string, unknown> = { status: 'pending' };
+            if (type === 'team') {
+                patch['teamMemberRole'] = resolvedTeamRole;
+            }
+            await updateDoc(doc(db, 'invites', inviteId), patch);
         } else {
             // invitesに招待情報を追加
-            const inviteDoc = await addDoc(collection(db, 'invites'), {
+            const basePayload: Record<string, unknown> = {
                 type: type,
                 targetId: targetId,
                 invitedUid: invitedUid,
@@ -861,15 +884,23 @@ export async function invite(
                 email: inviteEmail,
                 isRead: false,
                 isImportant: false,
-            });
+            };
+            if (type === 'team') {
+                basePayload['teamMemberRole'] = resolvedTeamRole;
+            }
+            const inviteDoc = await addDoc(collection(db, 'invites'), basePayload);
             inviteId = inviteDoc.id;
         }
         // 招待を通知ドキュメントに追加
+        const teamInviteMessage =
+            resolvedTeamRole === 'admin'
+                ? 'チーム招待があります（参加時の権限: 管理者）'
+                : 'チーム招待があります（参加時の権限: メンバー）';
         await addNotification({
             uid: invitedUid,
             type: type === 'project' ? 'project-invite' : 'team-invite',
             title: type === 'project' ? 'プロジェクト招待' : 'チーム招待',
-            message: type === 'project' ? 'プロジェクト招待があります' : 'チーム招待があります',
+            message: type === 'project' ? 'プロジェクト招待があります' : teamInviteMessage,
             fromUid: invitedByUid,
             sourceId: inviteId,
             isRead: false,
@@ -1018,6 +1049,25 @@ export async function getTaskCountByTeamId(teamId: string) {
 }
 
 // 受信トレイ
+/** 課題が完了したときなど、当該課題の「期日が近い」通知をすべて削除（sourceId = taskId） */
+export async function deleteTaskDeadlineNotificationsForTask(taskId: string): Promise<void> {
+    try {
+        const notificationRef = collection(db, 'notifications');
+        const q = query(notificationRef, where('sourceId', '==', taskId));
+        const snapshot = await getDocs(q);
+        const deletes: Promise<void>[] = [];
+        snapshot.forEach((d) => {
+            const t = d.data()['type'];
+            if (t === 'task-deadline') {
+                deletes.push(deleteDoc(d.ref));
+            }
+        });
+        await Promise.all(deletes);
+    } catch (error) {
+        console.error('期限通知の削除に失敗しました', error);
+    }
+}
+
 // 通知の追加
 export async function addNotification(data: AddNotificationInput) {
     try {
