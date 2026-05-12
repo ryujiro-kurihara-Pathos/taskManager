@@ -17,10 +17,10 @@ export const authGuard: CanActivateFn = (): Promise<boolean | UrlTree> => {
                 resolve(router.createUrlTree(['/login']));
                 return;
             }
-            // if (!user.emailVerified) {
-            //     resolve(router.createUrlTree(['/verify-email']));
-            //     return;
-            // }
+            if (!user.emailVerified) {
+                resolve(router.createUrlTree(['/verify-email']));
+                return;
+            }
             resolve(true);
         });
     });
